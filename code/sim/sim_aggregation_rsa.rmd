@@ -1,0 +1,46 @@
+---
+title: "simulation: aggregated RSA for session contrasts in DMCC Stroop"
+author: "mike freund"
+date: "8/25/2021"
+output: html_document
+---
+
+# notation
+
+- bold for vecs/mats, non-bold for scalars
+- set of matrices/vectors indexed by parenths
+- elements of matrices or vector indicated by subcripts i, j, dot
+
+
+# setting
+
+
+
+- set of experimental factors, $f \in \{\text{target}, \text{distractor}, \text{congruency}\}$
+<!-- - each factor has either $T$, $D$, or $C = 2$ levels -->
+<!-- - generally, level $N(f)$ for factor $f$ -->
+- each factor is itself a set of levels $t \in \text{target} = \{1, \dots, T\}$, $d \in \text{distractor} = \{1, \dots, D\}$, or $c \in \text{congruency} = \{1,C=2\}$ levels.
+- note that experimental stimuli are fully described by the crossing of target and distractor factors, which is indicated $\{t, d\}\in1, \dots TD$.
+
+
+- trial-level activity pattern estimates from vertex $v \in 1, \dots, V$ of a given region, within $L \times V$ matrix  $\mathbf{B}$
+- define an averaging matrix $\mathbf{A}_{L\times TD}$, that when applied to $\mathbf{B}_{L\times V}$, results in stimulus-level activity pattern estimates
+- element $\mathbf{A}_{l\{t,d\}} = \frac{I_{\{t,d\}}(l)}{\sum_{l = 1}^L I_{\{t,d\}}(l)}$, where I is indicator function, indicating whether stimulus $\{t,d\}$ (combination of target and distractor) was presented on trial $l$, and tne deominator scales the result of I by the number of times stimulus $\{t,d\}$ was presented.
+- for simplicity let's write $\mathbf{A}$ as a function $A_{\{t,d\}}(\mathbf{B})$ where A averages rows of $\mathbf{B}$ by levels of factor $\{t,d\}$.
+
+
+
+
+<!-- - scale columns of $\tilde{\mathbf{A}}$ such that they sum to 1: $\mathbf{A} = \tilde{\mathbf{A}}^\intercal \mathbf{C}^{-1}$, where $\mathbf{C}$ is a diagonal $TD\times TD$ matrix with the sum of columns of A forming the diagonal. -->
+
+- standard RSA is conducted on the _observed_ stimulus by stimulus similarity matrix $\mathbf{O} = \langle \mathbf{A}^\intercal\mathbf{B} \rangle$
+
+- hypothetical similarity matrices can be constructed in an analogous manner. First, by building an indicator matrix $\mathbf{X}(\text{target})$ where element $X_{t\{t,d\}}=I_{\text{target}}(\{t,d\})$. Then, by calculating the similarity among the stimuli across the indicator features $\mathbf{H}(\text{target}) = \langle \mathbf{X}(\text{target}) \rangle$
+
+- however a second aggregation was applied to $\mathbf{B}$ after $\mathbf{A}$. Aggregated additionally by levels of $\{t,c\}$
+
+<!-- \mathbf{A}^\intercal\mathbf{B} -->
+- element $C_{\{t,d\}\{t,c\}} = I_{\{t,c\}}(\{t,d\})$, within matrix $\mathbf{C}$.
+
+
+
