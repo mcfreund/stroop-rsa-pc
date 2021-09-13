@@ -1,0 +1,24 @@
+---
+title: "defining subject samples"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(data.table)
+library(here)
+library(knitr)
+
+```
+
+
+```{r}
+d <- fread(file.path(here(), "in", "dmcc2_behavior-and-events_stroop_2021-03-03.csv"))
+data.frame(table(d$subj, d$session)) %>% 
+  mutate(has_data = Freq > 0)
+
+kable(table(d$subj, d$session))
+d %>% filter(session %in% c("bas", "pro"))
+```
