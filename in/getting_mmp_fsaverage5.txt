@@ -16,5 +16,5 @@ mri_surf2surf --srcsubject fsaverage \
 
 # converting .annot to .gii
 
-mris_convert --annot lh.HCP-MMP1.annot /usr/local/freesurfer/subjects/fsaverage5/surf/lh.white lh.HCP-MMP1.gii
-mris_convert --annot rh.HCP-MMP1.annot /usr/local/freesurfer/subjects/fsaverage5/surf/rh.white rh.HCP-MMP1.gii
+mris_convert --annot lh.HCP-MMP1_fsaverage5.annot /usr/local/freesurfer/subjects/fsaverage5/surf/lh.white lh.HCP-MMP1_fsaverage5.gii
+mris_convert --annot rh.HCP-MMP1_fsaverage5.annot /usr/local/freesurfer/subjects/fsaverage5/surf/rh.white rh.HCP-MMP1_fsaverage5.gii
