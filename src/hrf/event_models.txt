@@ -1,0 +1,30 @@
+3dDeconvolve -nodata 26 1.2 -polort -1 -num_stimts 13   \
+	-stim_times 1 '1D: 0' 'BLOCK(1,1)' -stim_label 1 block_tr      \
+	-stim_times 2 '1D: 0.71' 'BLOCK(1,1)' -stim_label 2 block_true    \
+	-stim_times 3 '1D: 1.31' 'BLOCK(1,1)' -stim_label 3 block_true600 \
+	-stim_times 4 '1D: 0' 'BLOCK(2,1)' -stim_label 4 block2_tr      \
+	-stim_times 5 '1D: 0.71' 'BLOCK(2,1)' -stim_label 5 block2_true    \
+	-stim_times 6 '1D: 1.31' 'BLOCK(2,1)' -stim_label 6 block2_true600 \
+	-stim_times 7 '1D: 0' 'SPMG1(1)' -stim_label 7 spm_tr      \
+	-stim_times 8 '1D: 0.71' 'SPMG1(1)' -stim_label 8 spm_true    \
+	-stim_times 9 '1D: 1.31' 'SPMG1(1)' -stim_label 9 spm_true600 \
+	-stim_times 10 '1D: 0' 'SPMG1(2)' -stim_label 10 spm2_tr      \
+	-stim_times 11 '1D: 0.71' 'SPMG1(2)' -stim_label 11 spm2_true    \
+	-stim_times 12 '1D: 1.31' 'SPMG1(2)' -stim_label 12 spm2_true600 \
+	-stim_times 13 '1D: 0' 'TENTzero(0,16.8,15)' -stim_label 13 TENTzero \
+	-x1D X.1D
+#	-x1D stdout: | 1dplot -stdin -one -thick
+
+
+
+3dDeconvolve -nodata 26 1.2 -polort -1 -num_stimts 7   \
+	-stim_times 1 '1D: 0' 'BLOCK(1,1)' -stim_label 1 block_tr      \
+	-stim_times 2 '1D: 0.71' 'BLOCK(1,1)' -stim_label 2 block_true    \
+	-stim_times 3 '1D: 0.11' 'BLOCK(1,1)' -stim_label 3 block_true_minus \
+	-stim_times 4 '1D: 0' 'SPMG1(1)' -stim_label 4 spm_tr      \
+	-stim_times 5 '1D: 0.71' 'SPMG1(1)' -stim_label 5 spm_true    \
+	-stim_times 6 '1D: 0.11' 'SPMG1(1)' -stim_label 6 spm_true_minus \
+	-stim_times 7 '1D: 0' 'TENTzero(0,16.8,15)' -stim_label 7 TENTzero \
+	-x1D X_new.1D
+#	-x1D stdout: | 1dplot -stdin -one -thick
+

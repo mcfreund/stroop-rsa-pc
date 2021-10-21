@@ -1,0 +1,102 @@
+---
+title: "defining subject samples"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+
+library(here)
+library(dplyr)
+library(ggplot2)
+library(data.table)
+library(knitr)
+library(ggridges)
+
+opts_chunk$set(echo = TRUE)
+theme_set(theme_bw(base_size = 14))
+
+```
+
+
+```{r}
+
+d <- rbindlist(
+    list(
+      wave1 = fread(here("in", "dmcc2_behavior-and-events_stroop_2021-10-20.csv")),
+      wave2 = fread(here("in", "dmcc3_behavior-and-events_stroop_2021-10-20.csv")),
+      wave3 = fread(here("in", "dmcc4_behavior-and-events_stroop_2021-10-20.csv"))
+      ),
+    idcol = "wave"
+  )
+
+data.frame(table(d$subj, d$session)) %>% 
+  mutate(has_data = Freq > 0)
+
+kable(table(d$subj, d$session))
+d %>% filter(session %in% c("bas", "pro"))
+
+table(paste0(d$subj, d$session), !is.na(d$rt) & d$rt > 0)
+
+
+## test (wave1; DMCC2), retest (wave2, DMCC3; wave3, DMCC4)
+## stroop task only
+## mi-mc = baseline+proactive; mi-ispc = proactive+reactive; allsess = baseline+proactive+reactive
+## of these sets:
+## unrelated, co-twins
+## freund2021jneurosci, replication
+
+
+
+```
+
+
+# missings
+
+
+## behavior
+
+
+
+
+## fmri
+
+
+## baseline set
+
+
+## baseline+proactive set
+
+
+## proactive+reactive set
+
+
+## baseline+proactive+reactive set
+
+
+# twins
+
+
+
+
+# behavior
+
+```{r}
+
+d %>%
+  
+  filter(rt > 0) %>%
+  
+  ggplot(aes(rt, subj)) +
+  geom_density_ridges() +
+  facet_grid(cols = vars(session))
+
+
+
+
+
+```
+
+
+
+# jo 'sleeping' criteria
+
