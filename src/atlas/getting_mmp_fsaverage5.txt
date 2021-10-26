@@ -1,0 +1,20 @@
+# mmp in fsaverage
+
+https://figshare.com/articles/dataset/HCP-MMP1_0_projected_on_fsaverage/3498446
+
+# downsampling mmp from fsaverage to fsaverage5
+
+mri_surf2surf --srcsubject fsaverage \
+ --trgsubject fsaverage5 \
+ --sval-annot ./lh.HCP-MMP1.annot \
+ --tval ./lh.HCP-MMP1_fsaverage5.annot --hemi lh 
+
+mri_surf2surf --srcsubject fsaverage \
+ --trgsubject fsaverage5 \
+ --sval-annot ./rh.HCP-MMP1.annot \
+ --tval ./rh.HCP-MMP1_fsaverage5.annot --hemi rh 
+
+# converting .annot to .gii
+
+mris_convert --annot lh.HCP-MMP1_fsaverage5.annot /usr/local/freesurfer/subjects/fsaverage5/surf/lh.white lh.HCP-MMP1_fsaverage5.gii
+mris_convert --annot rh.HCP-MMP1_fsaverage5.annot /usr/local/freesurfer/subjects/fsaverage5/surf/rh.white rh.HCP-MMP1_fsaverage5.gii
