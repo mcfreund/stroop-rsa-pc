@@ -1,0 +1,17 @@
+*+ WARNING: !! stimulus filename #1:'1D: 0' same as #4:'1D: 0'
+*+ WARNING: !! stimulus filename #1:'1D: 0' same as #7:'1D: 0'
+*+ WARNING: !! stimulus filename #2:'1D: 0.71' same as #5:'1D: 0.71'
+*+ WARNING: !! stimulus filename #3:'1D: 0.26' same as #6:'1D: 0.26'
+*+ WARNING: !! stimulus filename #4:'1D: 0' same as #7:'1D: 0'
+*+ WARNING: -stim_times 1 has all times equal to 0 or 1 ?!?!
+*+ WARNING: -stim_times 4 has all times equal to 0 or 1 ?!?!
+*+ WARNING: -stim_times 7 has all times equal to 0 or 1 ?!?!
+*+ WARNING: !! in Signal+Baseline matrix:
+ * Largest singular value=2.60426
+ * 3 singular values are less than cutoff=2.60426e-07
+ * Implies strong collinearity in the matrix columns! 
+*+ WARNING: !! in Signal-only matrix:
+ * Largest singular value=2.60426
+ * 3 singular values are less than cutoff=2.60426e-07
+ * Implies strong collinearity in the matrix columns! 
+*+ WARNING: +++++ !! Matrix inverse average error = 0.0357129  ** BEWARE **
