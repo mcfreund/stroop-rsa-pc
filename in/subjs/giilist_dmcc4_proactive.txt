@@ -1,0 +1,6 @@
+197449/INPUT_DATA/Stroop/proactive/lpi_scale_tfMRI_StroopPro1_AP_L.func.gii
+672756/INPUT_DATA/Stroop/proactive/lpi_scale_tfMRI_StroopPro1_AP_L.func.gii
+DMCC3963378/INPUT_DATA/Stroop/proactive/lpi_scale_tfMRI_StroopPro1_AP_L.func.gii
+DMCC5195268/INPUT_DATA/Stroop/proactive/lpi_scale_tfMRI_StroopPro1_AP_L.func.gii
+DMCC8033964/INPUT_DATA/Stroop/proactive/lpi_scale_tfMRI_StroopPro1_AP_L.func.gii
+DMCC8760894/INPUT_DATA/Stroop/proactive/lpi_scale_tfMRI_StroopPro1_AP_L.func.gii
