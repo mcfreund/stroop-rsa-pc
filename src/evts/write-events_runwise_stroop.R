@@ -5,6 +5,7 @@
 ## mike freund, 2020-04-04
 ## adapted for ub55 2020-08-20
 
+library(colorout)
 library(here)
 library(dplyr)
 library(magrittr)
@@ -25,17 +26,16 @@ d[session == "bas"]$session <- "baseline"
 d[session == "rea"]$session <- "reactive"
 d[session == "pro"]$session <- "proactive"
 d$task <- "Stroop"
-d$trial.type <- ifelse(d$trial.type == "i", "incon", "congr")``
+d$trial.type <- ifelse(d$trial.type == "i", "incon", "congr")
 
 
 dir.analysis <- here("out", "glms")
 
 s <- fread(here("out", "subjlist.csv"))
+s <- s[needs_rerun == FALSE]  ## remove NA rows (why do these exist?)
 
 
 ## format ----
-
-
 
 
 ## prep dfs for loops
@@ -69,8 +69,9 @@ args.stroop.events
 
 results.stroop.events <- lapply(l, write.events, .args = args.stroop.events)
 results.stroop.events <- bind_rows(results.stroop.events, .id = "subj.session")
+ 
 
 ## write records
 
 fwrite(results.stroop.events, here("out", "glms", paste0("summary_write-events_runwise_shift600.csv")))
-# unique(results.stroop.events$n.events)
+#unique(results.stroop.events$n.events)

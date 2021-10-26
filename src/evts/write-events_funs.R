@@ -202,8 +202,7 @@ write.events <- function(.d, .args) {
 
 split.movregs <- function(
   to.split,
-  dir.to   = dir.analysis,
-  dir.from  = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/HCP_SUBJECTS_BACKUPS/fMRIPrep_AFNI_ANALYSIS/"
+  dir.to   = dir.analysis
 ) {
   
   ## reads movregs files from nil-bluearc, splits by run
@@ -218,14 +217,18 @@ split.movregs <- function(
   #   session = c("baseline", "proactive", "reactive")
   #   )
   # dir.from = dl$nil.dmcc2.hcp.afni
-  # dir.to   = file.path(dl$nil.external.freund, "AFNI_ANALYSIS_SUBSUBJECT")
   
+  if (any(!unique(to.split$wave) %in% c("wave1", "wave2"))) stop("bad values of to.split$wave")
+
+  to.split$dir.wave <- ifelse(to.split$wave == "wave1", "HCP_SUBJECTS_BACKUPS", "DMCC_Phase3")
   
+  dir.from <- file.path("/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS", to.split$dir.wave, "fMRIPrep_AFNI_ANALYSIS/")
   dir.from   <- file.path(dir.from, to.split$subj, "INPUT_DATA", to.split$task, to.split$session)
-  dir.to     <- file.path(dir.to, to.split$subj, "INPUT_DATA", to.split$task, to.split$session)
+  dir.to     <- file.path(dir.to, to.split$subj, to.split$wave, "INPUT_DATA", to.split$task, to.split$session)
   # filenames  <- paste0("Movement_Regressors_", to.split$session, ".1D")
   # files.from <- file.path(dir.from, filenames)
   # files.to   <- file.path(dir.to, filenames)
+
   file1 <- file.path(
     dir.from, 
     paste0(
