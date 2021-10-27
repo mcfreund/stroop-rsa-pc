@@ -5,6 +5,7 @@ output: html_document
 
 ```{r setup, include = FALSE}
 
+library(colorout)
 library(here)
 library(dplyr)
 library(tidyr)
@@ -23,15 +24,7 @@ theme_set(theme_bw(base_size = 14))
 
 ## behavioral data:
 
-d <- rbindlist(
-    list(
-      wave1 = fread(here("in", "dmcc2_behavior-and-events_stroop_2021-10-20.csv")),
-      wave2 = fread(here("in", "dmcc3_behavior-and-events_stroop_2021-10-20.csv")),
-      wave3 = fread(here("in", "dmcc4_behavior-and-events_stroop_2021-10-20.csv"))
-      ),
-    idcol = "wave"
-  )
-d$session <- ifelse(d$session == "bas", "baseline", ifelse(d$session == "pro", "proactive", "reactive"))
+d <- fread(here("in", "behavior-and-events_stroop_2021-10-20_nice.csv"))
 subjs_behav <- as.data.table(table(d$subj, d$session, d$wave))
 names(subjs_behav) <- c("subj", "session", "wave", "nrow_eprime")
 # subjs_behav$is_missing <- subjs_behav$nrow_eprime == 0
@@ -248,7 +241,7 @@ sum_er <- d_er %>%
   
   group_by(subj, session, wave) %>%
   mutate(total = n()) %>%
-  group_by(subj, session, wave, acc.final) %>%
+  group_by(subj, session, wave, acc_final) %>%
   summarize(
     total = unique(total),
     percent = sum(n()) / total*100
@@ -256,9 +249,9 @@ sum_er <- d_er %>%
 
 sum_er %>%
   
-  filter(acc.final != "1") %>%
+  filter(acc_final != "1") %>%
   
-  ggplot(aes(percent, subj, color = acc.final)) +
+  ggplot(aes(percent, subj, color = acc_final)) +
   geom_point(size = 2) +
   geom_vline(xintercept = 10, color = "grey60") +
   facet_grid(cols = vars(wave, session)) +
@@ -274,7 +267,7 @@ Line shows 10% threshold for "no response" used in Freund et al. (2021) *JNeuros
 
 ```{r}
 
-bad <- sum_er %>% filter(acc.final == "no.response" & percent > 10)
+bad <- sum_er %>% filter(acc_final == "no.response" & percent > 10)
 
 bad
 
@@ -303,7 +296,7 @@ mat_good_data <-
   rename(subj = Var1, wave_session = Var2)
 x <- as.matrix(table(subjs_samp$subj, paste0(subjs_samp$wave, "_", subjs_samp$session)))
 d <- dist(x, method = "euclidean") # distance matrix
-fit <- hclust(d, method="ward")
+fit <- hclust(d, method="ward.D")
 # plot(fit)
 groups <- cutree(fit, k = 5) # cut tree into 5 clusters
 mat_good_data$subj <- factor(mat_good_data$subj, levels = names(sort(groups)))
