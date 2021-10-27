@@ -43,7 +43,7 @@ names(subjs_behav) <- c("subj", "session", "wave", "nrow_eprime")
 ## fmri data (list of subjs who have):
 
 fnames_subjlist <- list.files(here("in/subjs"), pattern = "^subjlist", full.names = TRUE)
-names(fnames_subjlist) <- gsub("C:/proj/stroop-rsa-pc/in/subjs/subjlist_fmri_(.*)\\.txt", "\\1", fnames_subjlist)
+names(fnames_subjlist) <- gsub("^.*stroop-rsa-pc/in/subjs/subjlist_fmri_(.*)\\.txt", "\\1", fnames_subjlist)
 subjs_fmri <- rbindlist(lapply(fnames_subjlist, fread), idcol = "dmcc_session")
 names(subjs_fmri)[2] <- "subj"
 subjs_fmri <- separate(subjs_fmri, dmcc_session, c("dmcc", "session"))
