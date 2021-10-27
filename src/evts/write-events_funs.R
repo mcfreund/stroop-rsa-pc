@@ -200,7 +200,7 @@ write.events <- function(.d, .args) {
 }
 
 
-split.movregs <- function(
+split_movregs <- function(
   to.split,
   dir.to   = dir.analysis
 ) {
