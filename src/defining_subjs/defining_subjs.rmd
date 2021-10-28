@@ -137,7 +137,13 @@ names(subjs_jolist) <- c("issue", "wave", "subj", "session")
 
 ## bind
 
-subjs <- full_join(left_join(full_join(subjs_behav, subjs_fmri), subjs_twins), subjs_jolist)
+#subjs <- full_join(left_join(full_join(subjs_behav, subjs_fmri), subjs_twins), subjs_jolist)
+
+subjs_with_fmri <- inner_join(subjs_behav, subjs_fmri, by = c("session", "subj", "wave"))
+subjs_with_fmri <- left_join(subjs_with_fmri, subjs_twins, by = "subj")  ## add twin info
+subjs <- full_join(subjs_with_fmri, subjs_jolist, by = c("session", "subj", "wave"))  ## add jolist
+
+nrow(subjs) == nrow(subjs_with_fmri) ## TRUE if all subj*session*waves in jolist are in subjs
 
 ```
 
@@ -151,10 +157,12 @@ subjs <- full_join(left_join(full_join(subjs_behav, subjs_fmri), subjs_twins), s
 
 subjs_samp <- subjs[nrow_eprime %in% c(216, 240)]
 
+subjs[nrow_eprime == 0]
 subjs[nrow_eprime > 0 & nrow_eprime < 216]
 
 ```
-One subj has a partially complete set of runs in wave 1 baseline. Exclude.
+- Several subjs are marked as having no eprime rows. these subjs may be those without audio recording. exclude for now.
+- One subj has a partially complete set of runs in wave 1 baseline. Exclude.
 
 
 ## all MB8 subjects
