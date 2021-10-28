@@ -1,9 +1,6 @@
 ## about ----
 ##
 ## writes events for run-wise GLMs.
-##
-## mike freund, 2020-04-04
-## adapted for ub55 2020-08-20
 
 library(colorout)
 library(here)
@@ -14,64 +11,61 @@ library(mikeutils)
 
 source(here("src", "evts", "write-events_funs.R"))
 
-d <- rbindlist(
-  list(
-    wave1 = fread(here("in", "dmcc2_behavior-and-events_stroop_2021-10-20.csv")),
-    wave2 = fread(here("in", "dmcc3_behavior-and-events_stroop_2021-10-20.csv"))
-  ),
-  idcol = "wave"
-)
-
-d[session == "bas"]$session <- "baseline"
-d[session == "rea"]$session <- "reactive"
-d[session == "pro"]$session <- "proactive"
-d$task <- "Stroop"
-d$trial.type <- ifelse(d$trial.type == "i", "incon", "congr")
-
+d <- fread(here("in", "behavior-and-events_stroop_2021-10-20_nice.csv"))
+d <- d[wave %in% c("wave1", "wave2")]
 
 dir.analysis <- here("out", "glms")
 
 s <- fread(here("out", "subjlist.csv"))
-s <- s[needs_rerun == FALSE]  ## remove NA rows (why do these exist?)
 
 
-## format ----
+
+## run ----
 
 
 ## prep dfs for loops
 
-d %<>% arrange(subj, session, trial.type)
-
-
-## shift onset timing
-
-d$time.target.onset.shift600 <- d$time.target.onset - 0.6  ## s
-
-
-## split
-
+d %<>% arrange(subj, session, trial_type)
+d$time_target_onset_shift600 <- d$time_target_onset - 0.6  ## shift onset (s)
+d$alltrials <- "alltrials"  ## make column for alltrials
 l <- d %>% split(droplevels(interaction(.$subj, .$session, .$wave)))
 
 
 ## events
 
-args.stroop.events <- expand.grid(
+args_stroop_events <- expand.grid(
   var.level    = unique(d$item),
   name.var     = "item",
   dir.analysis = dir.analysis,
-  name.onset   = "time.target.onset.shift600",
+  name.onset   = "time_target_onset_shift600",
   by.run       = TRUE,
   fname.suffix = "_shift600",
   stringsAsFactors = FALSE
 )
 
-args.stroop.events
+args_stroop_events
 
-results.stroop.events <- lapply(l, write.events, .args = args.stroop.events)
-results.stroop.events <- bind_rows(results.stroop.events, .id = "subj.session")
+results_stroop_events <- lapply(l, write.events, .args = args_stroop_events)
+results_stroop_events <- bind_rows(results_stroop_events, .id = "subj_session")
  
+fwrite(results_stroop_events, here("out", "glms", paste0("summary_write-events_1rpm_shift600.csv")))
+#unique(results_stroop_events$n.events)
 
-## write records
 
-fwrite(results.stroop.events, here("out", "glms", paste0("summary_write-events_runwise_shift600.csv")))
-#unique(results.stroop.events$n.events)
+## alltrials
+
+args_stroop_alltrials <- expand.grid(
+  var.level    = "alltrials",
+  name.var     = "alltrials",
+  dir.analysis = dir.analysis,
+  name.onset   = "time_target_onset_shift600",
+  by.run       = TRUE,
+  fname.suffix = "_shift600",
+  stringsAsFactors = FALSE
+)
+
+args_stroop_alltrials
+
+results_stroop_alltrials <- lapply(l, write.events, .args = args_stroop_alltrials)
+results_stroop_alltrials <- bind_rows(results_stroop_alltrials, .id = "subj_session")
+fwrite(results_stroop_alltrials, here("out", "glms", paste0("summary_write-alltrials_1rpm_shift600.csv")))
