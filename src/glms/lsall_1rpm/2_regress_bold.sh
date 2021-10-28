@@ -6,7 +6,7 @@ subjects_file=${proj_dir}/out/glms/allsubjs.txt
 sessions=(baseline proactive reactive)
 tasks=(Stroop)
 waves=(1 2)
-do_single_subj=true  ## for dev/debugging
+do_single_subj=false  ## for dev/debugging
 
 
 source $proj_dir/src/glms/${glm}/regress.sh
