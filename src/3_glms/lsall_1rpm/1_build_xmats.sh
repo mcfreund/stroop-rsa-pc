@@ -9,4 +9,4 @@ waves=(1 2)
 do_single_subj=false  ## for dev/debugging
 
 
-source $proj_dir/src/glms/${glm}/build.sh
+source $proj_dir/src/3_glms/${glm}/build.sh
