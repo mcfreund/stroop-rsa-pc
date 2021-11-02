@@ -84,22 +84,35 @@ as_parcellated_list  <- function(giftis, fold_hemis, atlas, labels_from_data = T
 
 ## see here for more: https://github.com/mcfreund/psychomet/tree/master/in
 
-read_atlas <- function(roiset = "schaefer", dir_atlas = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/") {
+read_atlas <- function(roiset = "Schaefer2018_control", dir_atlas = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/") {
 
-    if (!roiset %in% c("schaefer", "mmp")) stop("roiset not configured")
+    configured <- c("Schaefer2018_control", "Schaefer2018_parcel", "Schaefer2018_network")
+    if (!roiset %in% configured) stop("roiset not configured")
     
     atlas <- list()
 
-    if (roiset == "schaefer") {
+    if (grepl("Schaefer2018", roiset)) {
 
         atlas$data <-
             c(
             gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_L.label.gii"))$data[[1]],
             gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_R.label.gii"))$data[[1]] + 200
             )
-        atlas$key <- data.table::fread(here::here("in", "atlas-key_schaefer400-07.csv"))
+        atlas$key <- data.table::fread(here::here("in", "atlas-key_schaefer400-07.csv"))$parcel
 
-    } else if (roiset == "mmp") {
+        if (roiset == "Schaefer2018_control") {
+            parcel_core32 <- atlas$key[core32]
+            parcel_vis <- atlas$key[grep("_Vis_", atlas$key)]
+            parcel_sommot <- atlas$key[grep("_SomMot_", atlas$key)]
+            parcels_control <- c(core32 = list(parcel_core32), Vis = list(parcel_vis), SomMot = list(parcel_sommot))
+            atlas$rois <- c(setNames(as.list(parcel_core32), parcel_core32), parcels_control)
+        } else if ("Schaefer2018_network") {
+            atlas$rois <- split(atlas$key$parcel, get_network(atlas$key$parcel))
+        } else if ("Schaefer2018_parcel") {
+            atlas$rois <- split(atlas$key$parcel, atlas$key$parcel)
+        }
+
+    } else if (roiset == "Glasser2016") {
 
     }
 
