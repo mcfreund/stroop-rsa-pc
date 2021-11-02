@@ -44,10 +44,15 @@ parcellated_image  <- function(giftis, fold_hemis, atlas, labels_from_data = TRU
         
         if (labels_from_data) {
             labs <- vapply(l[[fold_i]][[1]]$data_meta, function(x) x[1, "vals"], character(1))
-            labs_R <- vapply(l[[fold_i]][[2]]$data_meta, function(x) x[1, "vals"], character(1)) 
-            if (!identical(labs, labs_R)) stop("labs not identical across hemisphere")
-            dimnames(l_val) <- list(vertex = NULL, trial = labs)
-            if (!is.null(pattern)) l_val <- l_val[, grep(pattern, labs)]
+            #labs_R <- vapply(l[[fold_i]][[2]]$data_meta, function(x) x[1, "vals"], character(1))  ## add to is.parcellated_image()
+            #if (!identical(labs, labs_R)) stop("labs not identical across hemisphere")
+            colnames(l_val) <- labs
+            if (!is.null(pattern)) {
+                idx <- grep(pattern, labs)
+                l_val <- l_val[, idx]
+                labs <- labs[idx]
+            }
+            labels[[fold_i]] <- labs
         }
 
         d[[fold_i]] <- l_val
@@ -73,8 +78,7 @@ parcellated_image  <- function(giftis, fold_hemis, atlas, labels_from_data = TRU
     }
     good_vertices <- lapply(data, get_good_vertices)
 
-    out <- list(data = data, good_vertices = good_vertices)
-    class(out) <- c("parcellated_image", "list")
+    out <- list(data = data, good_vertices = good_vertices, labels = labels)
 
     out
 
