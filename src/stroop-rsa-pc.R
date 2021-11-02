@@ -55,9 +55,9 @@ as_parcellated_list  <- function(giftis, fold_hemis, atlas, labels_from_data = T
     
     ## parcellate data
     
-    data <- enlist(names(rois))
-    for (roi_i in seq_along(rois)) {
-        which_parcels <- which(atlas$key$parcel %in% rois[[roi_i]])
+    data <- enlist(names(atlas$rois))
+    for (roi_i in seq_along(atlas$rois)) {
+        which_parcels <- which(atlas$key %in% atlas$rois[[roi_i]])
         is_roi <- atlas$data %in% which_parcels
         data[[roi_i]] <- lapply(d, function(x) x[is_roi, ])
     }
