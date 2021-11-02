@@ -11,6 +11,7 @@ dir_atlas <- "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/"
 
 runs <- c("run1", "run2")
 hemis <- c("L", "R")
+run_hemis <- c("run1_L", "run1_R", "run2_L", "run2_R")
 sessions <- c("baseline", "proactive", "reactive")
 sesss <- c("Bas", "Pro", "Rea")
 waves <- c("wave1", "wave2")
