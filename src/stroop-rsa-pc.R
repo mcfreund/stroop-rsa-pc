@@ -3,14 +3,8 @@
 
 ## class def
 
-# pattern <- "_Coef"
-# labels_from_data <- TRUE
-# giftis <- gii
-# folds <- c("run1", "run1", "run2", "run2")
-# hemis <- c("L", "R", "L", "R")
-# fold_i <- 1
 
-parcellated_image  <- function(giftis, fold_hemis, atlas, labels_from_data = TRUE, pattern = NULL) {
+as_parcellated_list  <- function(giftis, fold_hemis, atlas, labels_from_data = TRUE, pattern = NULL) {
     ## giftis: list of gifti images of length N_folds*N_hemi (one element per fold*hemi)
     ## hemis, folds: vectors of length length(giftis), specifying hemi and fold value per element of gifti
     ## atlas: list of data and key of parcellation atlas
@@ -79,6 +73,7 @@ parcellated_image  <- function(giftis, fold_hemis, atlas, labels_from_data = TRU
     good_vertices <- lapply(data, get_good_vertices)
 
     out <- list(data = data, good_vertices = good_vertices, labels = labels)
+    class(out) <- c("parcellated_list", "list")
 
     out
 
