@@ -122,5 +122,9 @@ read_atlas <- function(roiset = "Schaefer2018_control", dir_atlas = "/data/nil-b
 
 ## misc
 
+
+
+
+get_network <- function(x) gsub("^.H_(Vis|SomMot|Cont|Default|Limbic|SalVentAttn|DorsAttn)_.*", "\\1", x)
 combo_paste <- function(a, b, sep = "", ...) apply(expand.grid(a, b, ...), 1, paste0, collapse = sep)
 enlist <- function(nms) setNames(vector("list", length(nms)), nms)
