@@ -10,6 +10,14 @@ new_parcellated_list  <- function(x = list(), glm_name = character(), roi_set = 
 }
 
 
+
+invert_list <- function(l) { 
+  ## https://stackoverflow.com/questions/15263146/revert-list-structure
+  ## @Josh O'Brien
+  x <- lapply(l, `[`, names(l[[1]]))  ## get sub-elements in same order
+  apply(do.call(rbind, x), 2, as.list)  ## stack and reslice
+}
+
 as_parcellated_list  <- function(giftis, fold_hemis, atlas, labels_from_data = TRUE, pattern = NULL) {
     ## giftis: list of gifti images of length N_folds*N_hemi (one element per fold*hemi)
     ## hemis, folds: vectors of length length(giftis), specifying hemi and fold value per element of gifti
