@@ -40,6 +40,7 @@ library(abind)
 ## glm dir and subject list, misc strings
 
 dir_analysis <- here("out", "glms")
+b <- fread(here("in", "behavior-and-events_stroop_2021-10-20_nice.csv"))
 s <- fread(here("out", "subjlist.csv"))
 source(here("src", "stroop-rsa-pc.R"))
 source(here("src", "_constants.R"))
@@ -67,11 +68,8 @@ if (interactive()) {
 }
 
 atlas <- read_atlas(roiset)
-names_core32 <- atlas$key$parcel[core32]
-rois <- split(atlas$key$parcel, atlas$key$parcel)[names_core32]
-rois <- c(rois, Vis = list(atlas$key$parcel[grep("_Vis_", atlas$key$parcel)]), SomMot = list(atlas$key$parcel[grep("_SomMot_", atlas$key$parcel)]))
-
-
+b <- b[subj %in% subjs & session %in% sessions & wave %in% waves]
+b <- arrange(b, subj, wave, session, run, trial_num)
 
 ## build data.table of input arguments
 
