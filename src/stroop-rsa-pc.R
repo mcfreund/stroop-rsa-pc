@@ -2,6 +2,12 @@
 ## defines functions for use in this project
 
 ## class def
+## https://adv-r.hadley.nz/s3.html, sec 13.3.1
+
+new_parcellated_list  <- function(x = list(), glm_name = character(), roi_set = character(), prewhitened = logical(), shrinkage = numeric()) {
+    stopifnot(is.list(x) || is.character(glm_name) || is.character(roi_set) || is.logical(prewhitened) || is.numeric(shrinkage))
+    structure(x, class = "parcellated_list", glm_name = glm_name, roi_set = roi_set, prewhitened = prewhitened, shrinkage = shrinkage)
+}
 
 
 as_parcellated_list  <- function(giftis, fold_hemis, atlas, labels_from_data = TRUE, pattern = NULL) {
@@ -76,6 +82,122 @@ as_parcellated_list  <- function(giftis, fold_hemis, atlas, labels_from_data = T
     class(out) <- c("parcellated_list", "list")
 
     out
+
+}
+
+is.parcellated_list <- function(x) inherits(x, "parcellated_list")
+
+print.parcellated_list <- function(x) {
+
+    n_roi <- length(x$data)
+    n_fold <- length(x$data[[1]])
+    dims <- vapply(x$data, function(x) dim(x[[1]]), numeric(2))
+    range_vertex <- range(dims[1, ])
+    n_trialtype <- unique(dims[2, ])
+    # cat(length(x$data[[1]]), "folds \n")
+    # cat(length(x$data[[1]]), "folds \n")
+    out_string <- paste0(
+        "parcellated list of ", n_roi, " ROIs (", min(range_vertex), "-", max(range_vertex), " features by ", n_trialtype, " conditions), ", 
+        "each with ", n_fold, " folds\n"
+    )
+
+    cat(out_string)
+
+}
+
+coef.parcellated_list <- function(x, rois = NULL, folds = NULL, good_vertices = TRUE, reduce = TRUE) {
+    
+    get_good_vertices_loop <- function(.data_roi, .good_vertices_roi) lapply(.data_roi, function(.x) .x[.good_vertices_roi, ])
+
+    if (is.null(rois)) {
+        out <- x$data
+    } else {
+        out <- x$data[rois]
+    }
+
+    if (!is.null(folds)) out <- lapply(out, function(a) a[folds])
+
+    if (good_vertices) {
+        if (!is.null(rois)) {
+            good_vertices_rois <- x$good_vertices[rois, drop = FALSE]
+        } else {
+            good_vertices_rois <- x$good_vertices
+        }
+        out <- Map(function(a, b) get_good_vertices_loop(a, b), out, good_vertices_rois)
+    }
+
+    if (reduce) {
+        if (length(rois) == 1) {  ## when only one ROI selected
+            out <- out[[1]]
+            if (length(folds) == 1) out <- out[[1]]
+        } else if (length(folds) == 1) {
+            out <- lapply(out, function(a) a[[1]])
+        }
+    }
+
+    return(out)
+
+}
+
+
+
+relabel <- function(x, nms, rename_cols = FALSE) {
+    if (!is.list(nms)) stop("nms must be list")
+    if (length(x$labels) != length(nms)) stop("n_folds in new labels must equal n_folds in old labels")
+    if (!identical(lapply(x$labels, length), lapply(nms, length))) stop("n_folds and names in new labels must equal those in old labels")  ## ensure check to ncol in is.parcellated_image()
+
+
+    x$labels <- nms
+
+    if (rename_cols) {
+        for (roi_i in seq_along(x$data)) {
+            for (fold_i in seq_along(x$data[[roi_i]])) colnames(x$data[[roi_i]][[fold_i]]) <- nms[[fold_i]]
+        }
+    }
+
+    x
+
+}
+
+
+parcellated_lapply <- function(x, f, ..., as_parcellated_list = TRUE) {
+    if (!is.parcellated_list(x)) stop("not parcellated_list")  ## add check to is....() for same number of cols across ROIs.
+
+    u <- unlist(x$data, recursive = FALSE)
+    res <- parallel::mclapply(u, f, ...)
+    names(res) <- unlist(lapply(x$data, names), use.names = FALSE)
+    x$data <- split(res, names(x$data))
+
+    if (as_parcellated_list && !is.parcellated_list(x)) stop("result no longer parcellated_list")
+    
+    x
+
+}
+
+as.array.parcellated_list <- function(x) {
+    if (!is.parcellated_list(x)) stop("not parcellated_list")  ## add check to is....() for same number of cols across ROIs.
+    #n_cols <- unlist(lapply(x$data, function(x) lapply(x, ncol)))
+    #n_unique_ncols <- length(unique(n_cols))
+    n_rows <- unlist(lapply(x$data, function(x) lapply(x, nrow)))
+    n_unique_nrows <- length(unique(n_rows))
+    if (n_unique_nrows != 1L) stop("n_rows must be matched across folds")
+
+    nms <- list(
+        Var1 = rownames(x$data[[1]][[1]]),
+        Var2 = colnames(x$data[[1]][[1]]),
+        fold = names(x$data[[1]]),
+        roi = names(x$data)
+    )
+    
+    u <- unlist(x$data, recursive = FALSE)
+    u <- u[sort(combo_paste(nms$roi, nms$fold, sep = "."))]  ## sort b/c unlist screws up order?
+
+    a <- abind::abind(u, along = 0)
+    ap <- aperm(a, c(2, 3, 1))
+    dim(ap) <- lapply(nms, length)
+    dimnames(ap) <- nms
+    
+    ap
 
 }
 
