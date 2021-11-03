@@ -10,6 +10,40 @@ new_parcellated_list  <- function(x = list(), glm_name = character(), roi_set = 
 }
 
 
+x <- parc_gii
+validate_parcellated_list <- function(x) {
+    ## check types within list
+    ## check consistency of features across folds, obs across rois
+    ## check values of attr
+    
+    if (!identical("list", unique(vapply(x, class, character(1))))) stop("x is not nested list")
+    if (any(!c("data", "labels") %in% names(x))) stop("x does not contain 'data' or 'labels' names")
+    
+    x_data <- x$data
+    x_labels <- x$labels
+    if (!identical("list", unique(vapply(x_data, class, character(1))))) stop("x$data is not nested list")
+    if (!identical("character", unique(vapply(x_labels, class, character(1))))) stop("x$labels is not list of character vectors")
+    
+    n_fold_data <- unique(vapply(x_data, length, numeric(1)))
+    n_fold_label <- length(x_labels)
+    if (length(n_fold_data) != 1L) stop("Contains differing numbers of folds across ROIs.")
+    if (n_fold_data != n_fold_label) stop("Mismached folds in data and labels.")
+
+    if (any(duplicated(names(x_data)))) stop("x$data contains duplicate ROI names")
+
+    u <- unlist(x_data, recursive = FALSE)
+    if (any(duplicated(u))) stop("x$data contains duplicate roi*folds")
+    vapply(u, class, character(1))
+    n_obs <- unique(vapply(u, ncol, numeric(1)))
+    if (length(n_obs) != 1L) stop("x$data number of observations")
+    
+    
+
+
+
+
+
+}
 
 invert_list <- function(l) { 
   ## https://stackoverflow.com/questions/15263146/revert-list-structure
@@ -215,7 +249,7 @@ as.array.parcellated_list <- function(x) {
 ## see here for more: https://github.com/mcfreund/psychomet/tree/master/in
 
 read_atlas <- function(roiset = "Schaefer2018_control", dir_atlas = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/") {
-
+    
     configured <- c("Schaefer2018_control", "Schaefer2018_parcel", "Schaefer2018_network")
     if (!roiset %in% configured) stop("roiset not configured")
     
