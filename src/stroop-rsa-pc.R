@@ -173,12 +173,17 @@ construct_filename_gifti <- function(
 
 
 construct_filenames_gifti <- function(
-    d,
-    # subjects, waves, sessions, runs, glmnames, 
-    # hemis = c("L", "R"), 
-    task = "Stroop", base_dir = here::here("out", "glms"), prefix = "STATS", suffix = "REML.func.gii"
+    subjects, waves, sessions, runs, glmnames, hemis = c("L", "R"), 
+    task = "Stroop", base_dir = here::here("out", "glms"), prefix = "STATS", suffix = "REML.func.gii",
+    returnDT = TRUE
     ){
     
+    d <- expand.grid(
+        subject = subjects, wave = waves, session = sessions, run = runs, glmname = glmname,
+        hemi = hemis,
+        stringsAsFactors = FALSE
+    )
+
     missing_col <- names(d)[!names(d) %in% c("subject", "wave", "session", "run", "glmname", "hemi")]
     if (length(missing_col) > 0) stop("missing column:", missing_col)
     
@@ -193,7 +198,14 @@ construct_filenames_gifti <- function(
         )
     }
 
-    filename
+    if (returnDT) {
+        d$filename <- filename
+        data.table::setDT(d, key = c("subject", "wave", "session", "run", "hemi"))
+        d
+    } else {
+        filename
+    }
+
 
 }
 
