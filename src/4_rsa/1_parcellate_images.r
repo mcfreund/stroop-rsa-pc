@@ -37,26 +37,24 @@ library(data.table)
 library(gifti)
 library(abind)
 library(rhdf5)
+source(here("src", "stroop-rsa-pc.R"))
 
-## glm dir and subject list, misc strings
-
-dir_analysis <- here("out", "glms")
+## read behavioral data and subject list
 b <- fread(here("in", "behavior-and-events_stroop_2021-10-20_nice.csv"))
 s <- fread(here("out", "subjlist.csv"))
-source(here("src", "stroop-rsa-pc.R"))
-source(here("src", "_constants.R"))
 
-prewhitened <- "none"
+
+## set variables
+
+prewh <- "none"
 task <- "Stroop"
-
-## command args
 
 if (interactive()) { 
 
-    glm_name <- "lsall_1rpm"
+    glmname <- "lsall_1rpm"
     roiset <- "Schaefer2018_control"
     
-    subjs <- unique(s[is_ispc_retest == TRUE]$subj)[1:2]
+    subjects <- unique(s[is_ispc_retest == TRUE]$subj)[1:2]
     sessions <- "reactive"
     waves <- c("wave1", "wave2")
     file_prefix <- "STATS"  ## must be length one
@@ -72,10 +70,12 @@ if (interactive()) {
 
 }
 
-## read data
+## read atlas
 
 atlas <- read_atlas(roiset)
-b <- b[subj %in% subjs & session %in% sessions & wave %in% waves]
+
+## wrangle behavioral data
+b <- b[subj %in% subjects & session %in% sessions & wave %in% waves]
 b <- arrange(b, subj, wave, session, run, trial_num)
 
 ## build data.table of input arguments
