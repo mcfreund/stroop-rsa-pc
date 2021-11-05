@@ -1,19 +1,6 @@
-## basic packages ----
-
-library(colorout)
-library(here)
-library(dplyr)
-library(tidyr)
-library(data.table)
-library(gifti)
-library(abind)
-library(ggplot2)
-
-
 ## settings ----
 
-options(datatable.print.trunc.cols = TRUE, datatable.print.class = TRUE, datatable.print.nrows = 20)
-theme_set(theme_bw(base_size = 14))
+options(datatable.print.trunc.cols = TRUE, datatable.print.class = TRUE, datatable.print.nrows = 50)
 
 
 ## constants ----
@@ -27,48 +14,108 @@ n_core <- parallel::detectCores()
 dir_atlas <- "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/"
 
 
-## image, design, analysis info
+## "metadata" / variables
 
-runs <- c("run1", "run2")
-hemis <- c("L", "R")
-run_hemis <- c("run1_L", "run1_R", "run2_L", "run2_R")
+## :: design info
+
+waves <- c("wave1", "wave2")
 sessions <- c("baseline", "proactive", "reactive")
 sesss <- c("Bas", "Pro", "Rea")
-waves <- c("wave1", "wave2")
-wave_dir_image <- c(wave1 = "HCP_SUBJECTS_BACKUPS", wave2 = "DMCC_Phase3")
-wave_dir_evts <- c(wave1 = "DMCC2", wave2 = "DMCC3")
+runs <- c("run1", "run2")
+#hemis <- c("L", "R")
+#run_hemis <- c("run1_L", "run1_R", "run2_L", "run2_R")
+#wave_dir_image <- c(wave1 = "HCP_SUBJECTS_BACKUPS", wave2 = "DMCC_Phase3")
+#wave_dir_evts <- c(wave1 = "DMCC2", wave2 = "DMCC3")
 colors_bias <- c("blue", "red", "purple", "white")
 colors_pc50 <- c("black", "green", "pink", "yellow")
 words_bias <- toupper(colors_bias)
 words_pc50 <- toupper(colors_pc50)
-stimuli_bias <- apply(expand.grid(colors_bias, words_bias), 1, paste0, collapse = "_")
-stimuli_pc50 <- apply(expand.grid(colors_pc50, words_pc50), 1, paste0, collapse = "_")
-trialtypes <- c(stimuli_bias, stimuli_pc50)
+ttypes_bias <- apply(expand.grid(colors_bias, words_bias), 1, paste0, collapse = "_")
+ttypes_pc50 <- apply(expand.grid(colors_pc50, words_pc50), 1, paste0, collapse = "_")
+ttypes <- c(ttypes_bias, ttypes_pc50)
 
-
-n_vertex <- 20484  ## surface hcp mesh
+n_vertex <- 20484  ## surface hcp mesh fslr5
 n_tr <- c(
   baseline  = 540,
   proactive = 540,
   reactive  = 590
-)  ## number of tr per subj*run
+)  ## number of tr per subj*run for stroop task
 n_trial <- c(
   baseline = 108,
   proactive = 108,
   reactive = 120
-  )  ## number of trials (events) per subj*run
+  )  ## number of trials (events) per subj*run for stroop task
 n_run <- 2
 n_session <- 3
-#n_trialtype <- length(trialtypes)  ## across both runs
 
+## :: analytic info
 
-## ROIs
+glmnames <- c("lsall_1rpm", "lss_1rpm", "item_1rpm")
+prewhs <- c("none", "resid", "obs", "rest")
+roisets <- c("Schaefer2018_control", "Schaefer2018_network", "Schaefer2018_parcel", "Glasser2016_parcel")
 
 core32 <- c(
   99, 127, 129, 130, 131, 132, 137, 140, 141, 142, 148, 163, 165, 182, 186, 300, 332, 333, 334, 335, 336, 337, 340, 345, 
   349, 350, 351, 352, 354, 361, 365, 387
-)
+)  ## parcel indexes in Schaefer2018
 
+
+
+
+## functions ----
+
+## misc
+
+get_network <- function(x) gsub("^.H_(Vis|SomMot|Cont|Default|Limbic|SalVentAttn|DorsAttn)_.*", "\\1", x)
+combo_paste <- function(a, b, sep = "", ...) apply(expand.grid(a, b, ...), 1, paste0, collapse = sep)
+enlist <- function(nms) setNames(vector("list", length(nms)), nms)
+# invert_list <- function(l) { 
+#   ## https://stackoverflow.com/questions/15263146/revert-list-structure
+#   ## @Josh O'Brien
+#   x <- lapply(l, `[`, names(l[[1]]))  ## get sub-elements in same order
+#   apply(do.call(rbind, x), 2, as.list)  ## stack and reslice
+# }
+
+
+
+## classef: "atlas"
+## see here for more: https://github.com/mcfreund/psychomet/tree/master/in
+
+read_atlas <- function(roiset = "Schaefer2018_control", dir_atlas = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/") {
+    
+    configured <- c("Schaefer2018_control", "Schaefer2018_parcel", "Schaefer2018_network")
+    if (!roiset %in% configured) stop("roiset not configured")
+    
+    atlas <- list()
+
+    if (grepl("Schaefer2018", roiset)) {
+
+        atlas$data <-
+            c(
+            gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_L.label.gii"))$data[[1]],
+            gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_R.label.gii"))$data[[1]] + 200
+)
+        atlas$key <- data.table::fread(here::here("in", "atlas-key_schaefer400-07.csv"))$parcel
+
+        if (roiset == "Schaefer2018_control") {
+            parcel_core32 <- atlas$key[core32]
+            parcel_vis <- atlas$key[grep("_Vis_", atlas$key)]
+            parcel_sommot <- atlas$key[grep("_SomMot_", atlas$key)]
+            parcels_control <- c(core32 = list(parcel_core32), Vis = list(parcel_vis), SomMot = list(parcel_sommot))
+            atlas$rois <- c(setNames(as.list(parcel_core32), parcel_core32), parcels_control)
+        } else if ("Schaefer2018_network") {
+            atlas$rois <- split(atlas$key$parcel, get_network(atlas$key$parcel))
+        } else if ("Schaefer2018_parcel") {
+            atlas$rois <- split(atlas$key$parcel, atlas$key$parcel)
+        }
+
+    } else if (roiset == "Glasser2016") {
+
+    }
+
+    atlas
+
+}
 
 ## functions ----
 
