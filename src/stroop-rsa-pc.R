@@ -94,7 +94,7 @@ read_atlas <- function(roiset = "Schaefer2018_control", dir_atlas = "/data/nil-b
             c(
             gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_L.label.gii"))$data[[1]],
             gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_R.label.gii"))$data[[1]] + 200
-)
+            )
         atlas$key <- data.table::fread(here::here("in", "atlas-key_schaefer400-07.csv"))$parcel
 
         if (roiset == "Schaefer2018_control") {
@@ -114,10 +114,9 @@ read_atlas <- function(roiset = "Schaefer2018_control", dir_atlas = "/data/nil-b
     }
 
     atlas
-
+    
 }
 
-## functions ----
 
 
 ## for interacting with gifti objects
@@ -244,10 +243,116 @@ create_h5groups <- function(filename, subjects, waves = NULL, sessions = NULL, r
 
 
 
+
+
+# write_nested_h5 <- function(x, colname_data, file_name, data_name = colname_data) {
+    
+#     d <- x$data
+#     files <- apply(d[, .(subject, session, wave, roi, fold)], 1, paste0, collapse = "/")
+#     data <- d[[colname_data]]
+    
+#     UseMethod("write_nested_h5")
+# }
+
+# write_nested_h5.parcellated_data <- function(x, colname_data, file_name, data_name = colname_data) {
+
+#     for (file_i in seq_along(files)) {
+#         g <- files[file_i]
+#         x <- data[[file_i]]
+#         rhdf5::h5write(x, file_name, paste0(c(g, data_name), collapse = "/"))
+#     }
+
+# }
+
+
+# write_nested_h5.parcellated_image <- function(x, colname_data, file_name, data_name = colname_data) {
+
+#     bad_vertices <- d$bad_vertices
+
+#     for (file_i in seq_along(files)) {
+#         g <- files[file_i]
+#         x <- data[[file_i]]
+#         if (length(bad_vertices[[file_i]]) > 0) {
+#             rhdf5::h5write(bad_vertices[[file_i]], file_name, paste0(c(g, "bad_vertices"), collapse = "/"))
+#         }
+#         rhdf5::h5write(x, file_name, paste0(c(g, data_name), collapse = "/"))
+#     }
+
+# }
+
+
+
+# construct_filename <- function(
+#     prefix,
+#     filetype,
+#     pdata = NULL,
+#     data_type = NULL,
+#     glm_name = NULL,
+#     roi_set = NULL,
+#     prewhitened = NULL,
+#     only_good_verts = NULL
+#     ) {
+
+#     strings <- c(data_type, glm_name, roi_set, prewhitened)
+    
+#     if (!is.null(pdata)) {
+
+#         if (any(!is.null(strings))) stop("strings and pdata must not be both specified")
+#         glm_name <- pdata$metadata$glm_name
+#         roi_set <- pdata$metadata$roi_set
+#         prewhitened <- pdata$metadata$prewhitened
+#         shrinkage_var <- pdata$metadata$shrinkage_var
+#         shrinkage_cov <- pdata$metadata$shrinkage_cov
+#         if (is.parcellated_image(pdata)) {
+#             prefix <- paste0("pimage-", prefix)
+#             bad_vertices <- ""
+#         } else if (is.parcellated_data(pdata)) {
+#             bad_vertices <- paste0("badvertices-", switch(only_good_verts + 1, "incl", "rm"))
+#             prefix <- paste0("pdata-", prefix)
+#         } else stop("if pdata supplied must be either parcellated_image or parcellated_data")
+
+#     } else {
+        
+#         if (any(is.null(strings))) stop("missing character arg")
+        
+#         expected <- list(
+#             data_type = c("pdata", "pimage"),
+#             glm_name = c("lsall_1rpm", "lss_1rpm", "item_1rpm"),
+#             roi_set = c("Schaefer2018_control", "Schaefer2018_network", "Schaefer2018_parcel"),
+#             prewhitened = c("none", "resid", "obs"),
+#             only_good_verts = c(TRUE, FALSE)
+#         )
+
+#         if (!data_type %in% expected$data_type) stop("data_type must be one of ", paste0(expected$data_type, sep = " "))
+#         if (!glm_name %in% expected$glm_name) stop("data_type must be one of ", paste0(expected$glm_name, sep = " "))
+#         if (!roi_set %in% expected$roi_set) stop("data_type must be one of ", paste0(expected$roi_set, sep = " "))
+#         if (!prewhitened %in% expected$prewhitened) stop("data_type must be one of ", paste0(expected$prewhitened, sep = " "))
+#         if (data_type == "pdata" && is.null(only_good_verts)) stop("must specify only_good_verts with data_type = pdata")
+#         prefix <- paste0(data_type, "-", prefix)
+#         if (data_type == "pdata") {
+#             bad_vertices <- paste0("badvertices-", switch(only_good_verts + 1, "incl", "rm"))
+#         } else bad_vertices <- ""
+#     }
+
+#     paste0(
+#         prefix, "_", 
+#         "glm-", glm_name, 
+#         "_roiset-", roi_set, 
+#         "_prewh-", prewhitened,
+#         bad_vertices,
+#         filetype
+#         )
+
+# }
+
+
+
+
+## classdef: "parcellated_data"
 ## https://adv-r.hadley.nz/s3.html, sec 13.3.1
 
 ## parellated_data
-## list of lenth two: data and metadata
+## list of lenth two: data and labels
 ## data: a data.table 
 ##      - contains a list-column of feature (e.g., vertex) by obs (e.g., trial) matrices, one matrix per row.
 ##      - other columns specify information about each row's data matrix. e.g., roi, fold, subject, session, wave, ...
@@ -259,30 +364,30 @@ create_h5groups <- function(filename, subjects, waves = NULL, sessions = NULL, r
 ## parcellated_data object whos features are vertices and that contains an additional list-column of "bad_verts".
 ## bad_verts are integer vectors that index vertices with no measured fMRI signal.
 
-new_parcellated_data <- function(
-    x = data.table::data.table(),
-    glm_name = character(), 
-    roi_set = character(), 
-    prewhitened = character(), 
-    shrinkage_var = numeric(),
-    shrinkage_cov = numeric()
-    ) {
-    stopifnot(
-        data.table::is.data.table(x) && is.character(glm_name) && is.character(roi_set) && is.character(prewhitened) && 
-        is.numeric(shrinkage_var) && is.numeric(shrinkage_cov)
-        )
-    obj <- list(
-        data = x,
-        metadata = list(glm_name = glm_name, roi_set = roi_set, prewhitened = prewhitened, shrinkage_var = shrinkage_var, shrinkage_cov = shrinkage_cov)
-        )
-    structure(obj, class = c("parcellated_data", "list"))
-}
+# new_parcellated_data <- function(
+#     x = data.table::data.table(),
+#     glm_name = character(), 
+#     roi_set = character(), 
+#     prewhitened = character(), 
+#     shrinkage_var = numeric(),
+#     shrinkage_cov = numeric()
+#     ) {
+#     stopifnot(
+#         data.table::is.data.table(x) && is.character(glm_name) && is.character(roi_set) && is.character(prewhitened) && 
+#         is.numeric(shrinkage_var) && is.numeric(shrinkage_cov)
+#         )
+#     obj <- list(
+#         data = x,
+#         metadata = list(glm_name = glm_name, roi_set = roi_set, prewhitened = prewhitened, shrinkage_var = shrinkage_var, shrinkage_cov = shrinkage_cov)
+#         )
+#     structure(obj, class = c("parcellated_data", "list"))
+# }
 
-new_parcellated_image <- function(...) {
-    x <- new_parcellated_data(...)
-    class(x) <- c("parcellated_image", class(x))
-    x
-}
+# new_parcellated_image <- function(...) {
+#     x <- new_parcellated_data(...)
+#     class(x) <- c("parcellated_image", class(x))
+#     x
+# }
 
 #validate_parcellated_data <- function()  ## TODO: ensure all attributes are of length 1
 #validate_parcellated_image  ## check bad_vertices
@@ -489,58 +594,3 @@ relabel <- function(pdata, colname_data, nms) {
 
 # }
 
-
-
-
-
-## read atlas
-
-## see here for more: https://github.com/mcfreund/psychomet/tree/master/in
-
-read_atlas <- function(roiset = "Schaefer2018_control", dir_atlas = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/") {
-    
-    configured <- c("Schaefer2018_control", "Schaefer2018_parcel", "Schaefer2018_network")
-    if (!roiset %in% configured) stop("roiset not configured")
-    
-    atlas <- list()
-
-    if (grepl("Schaefer2018", roiset)) {
-
-        atlas$data <-
-            c(
-            gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_L.label.gii"))$data[[1]],
-            gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_R.label.gii"))$data[[1]] + 200
-            )
-        atlas$key <- data.table::fread(here::here("in", "atlas-key_schaefer400-07.csv"))$parcel
-
-        if (roiset == "Schaefer2018_control") {
-            parcel_core32 <- atlas$key[core32]
-            parcel_vis <- atlas$key[grep("_Vis_", atlas$key)]
-            parcel_sommot <- atlas$key[grep("_SomMot_", atlas$key)]
-            parcels_control <- c(core32 = list(parcel_core32), Vis = list(parcel_vis), SomMot = list(parcel_sommot))
-            atlas$rois <- c(setNames(as.list(parcel_core32), parcel_core32), parcels_control)
-        } else if ("Schaefer2018_network") {
-            atlas$rois <- split(atlas$key$parcel, get_network(atlas$key$parcel))
-        } else if ("Schaefer2018_parcel") {
-            atlas$rois <- split(atlas$key$parcel, atlas$key$parcel)
-        }
-
-    } else if (roiset == "Glasser2016") {
-
-    }
-
-    atlas
-    
-}
-
-## misc
-
-get_network <- function(x) gsub("^.H_(Vis|SomMot|Cont|Default|Limbic|SalVentAttn|DorsAttn)_.*", "\\1", x)
-combo_paste <- function(a, b, sep = "", ...) apply(expand.grid(a, b, ...), 1, paste0, collapse = sep)
-enlist <- function(nms) setNames(vector("list", length(nms)), nms)
-invert_list <- function(l) { 
-  ## https://stackoverflow.com/questions/15263146/revert-list-structure
-  ## @Josh O'Brien
-  x <- lapply(l, `[`, names(l[[1]]))  ## get sub-elements in same order
-  apply(do.call(rbind, x), 2, as.list)  ## stack and reslice
-}
