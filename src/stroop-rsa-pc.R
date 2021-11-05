@@ -154,7 +154,96 @@ parcellate_data <- function(x, atlas) {
 }
 
 
-## class def: parcellated_data and parcellated_image
+
+## filename constructors
+
+construct_filename_gifti <- function(
+    subject, wave, session, run, glmname, hemi,
+    task = "Stroop", base_dir = here::here("out", "glms"), prefix = "STATS", suffix = "REML.func.gii"
+    ){
+    
+    arg <- as.list(environment())
+    if (any(vapply(arg, length, numeric(1)) > 1)) stop("not yet configured for length>1 args")
+
+    file.path(
+        base_dir, subject, wave, "RESULTS", task, paste0(session, "_", glmname),
+        paste0(prefix, "_", subject, "_", run, "_", hemi, "_", suffix)
+        )
+}
+
+
+
+construct_filenames_gifti <- function(
+    d,
+    # subjects, waves, sessions, runs, glmnames, 
+    # hemis = c("L", "R"), 
+    task = "Stroop", base_dir = here::here("out", "glms"), prefix = "STATS", suffix = "REML.func.gii"
+    ){
+    
+    missing_col <- names(d)[!names(d) %in% c("subject", "wave", "session", "run", "glmname", "hemi")]
+    if (length(missing_col) > 0) stop("missing column:", missing_col)
+    
+    filename <- vector("character", nrow(d))
+    for (row_i in seq_len(nrow(d))) {
+        x <- d[row_i, ]
+        filename[row_i] <- construct_filename_gifti(
+            subject = x$subject, wave = x$wave, 
+            session = x$session, run = x$run, 
+            glmname = x$glmname, hemi = x$hemi,
+            task = task, base_dir = base_dir, prefix = prefix, suffix = suffix
+        )
+    }
+
+    filename
+
+}
+
+construct_filename_h5 <- function(
+    prefix, glmname, roiset, prewh,
+    base_dir = here::here("out"), suffix = ".h5"
+    ){
+    
+    arg <- as.list(environment())
+    if (any(vapply(arg, length, numeric(1)) > 1)) stop("not yet configured for length>1 args")
+
+    file.path(base_dir, paste0(prefix, "_glm-", glmname, "_roiset-", roiset, "_prewh-", prewh, suffix))
+
+}
+
+
+
+## I/O with hdf5 (wrappers for rhdf5 functions)
+
+create_h5groups <- function(filename, subjects, waves = NULL, sessions = NULL, runs = NULL, rois = NULL){
+    
+    f <- function(filename, ...) {
+        x <- expand.grid(..., stringsAsFactors = FALSE)
+        paths <- paste0("/", apply(x, 1, paste0, collapse = "/"))
+        lapply(paths, rhdf5::h5createGroup, file = filename)
+    }
+
+    f(filename, subjects)
+    if (!is.null(waves)) {
+      f(filename, subjects, waves)
+        if (!is.null(sessions)) {
+            f(filename, subjects, waves, sessions)
+            if (!is.null(runs)) {
+                f(filename, subjects, waves, sessions, runs)
+                if (!is.null(rois)) {
+                    f(filename, subjects, waves, sessions, runs, rois)
+                }
+            }
+        }
+    }
+    
+    rhdf5::h5closeAll()
+
+} 
+
+
+
+
+
 ## https://adv-r.hadley.nz/s3.html, sec 13.3.1
 
 ## parellated_data
@@ -369,133 +458,6 @@ relabel <- function(pdata, colname_data, nms) {
 
 }
 
-
-## I/O with hdf5 (wrappers for rhdf5 functions)
-
-
-# colname_data = "B"
-# file_name = fname
-# data_name = colname_data
-# file_i <- 1
-# g <- pimage$data[file_i, c(subject, session, wave, roi, fold)]
-# x <- pimage$data[[colname_data]][file_i][[1]]
-
-create_nested_group <- function(g, file_name) {
-    if (!file.exists(file_name)) stop("file does not exist: ", file_name)
-    
-    ## create group tree if necessary
-    l <- data.table::as.data.table(h5ls(file_name))
-    existing_groups <- l[otype == "H5I_GROUP", c(paste0(group, "/", name))]
-    existing_groups <- gsub("^//", "/", existing_groups)  ## rm double-slash on some entries
-    new_path_full <- paste0("/", paste0(g, collapse = "/"))
-    if (!new_path_full %in% existing_groups) {
-        for (i in seq_along(g)) {
-            new_path <- paste0(g[1:i], collapse = "/")
-            h5createGroup(file_name, new_path)
-        }
-    } else message("group already exists: ", new_path_full)
-
-}
-
-write_nested_h5 <- function(x, colname_data, file_name, data_name = colname_data) {
-    
-    d <- x$data
-    files <- apply(d[, .(subject, session, wave, roi, fold)], 1, paste0, collapse = "/")
-    data <- d[[colname_data]]
-    
-    UseMethod("write_nested_h5")
-}
-
-write_nested_h5.parcellated_data <- function(x, colname_data, file_name, data_name = colname_data) {
-
-    for (file_i in seq_along(files)) {
-        g <- files[file_i]
-        x <- data[[file_i]]
-        rhdf5::h5write(x, file_name, paste0(c(g, data_name), collapse = "/"))
-    }
-
-}
-
-
-write_nested_h5.parcellated_image <- function(x, colname_data, file_name, data_name = colname_data) {
-
-    bad_vertices <- d$bad_vertices
-
-    for (file_i in seq_along(files)) {
-        g <- files[file_i]
-        x <- data[[file_i]]
-        if (length(bad_vertices[[file_i]]) > 0) {
-            rhdf5::h5write(bad_vertices[[file_i]], file_name, paste0(c(g, "bad_vertices"), collapse = "/"))
-        }
-        rhdf5::h5write(x, file_name, paste0(c(g, data_name), collapse = "/"))
-    }
-
-}
-
-
-
-construct_filename <- function(
-    prefix,
-    filetype,
-    pdata = NULL,
-    data_type = NULL,
-    glm_name = NULL,
-    roi_set = NULL,
-    prewhitened = NULL,
-    only_good_verts = NULL
-    ) {
-
-    strings <- c(data_type, glm_name, roi_set, prewhitened)
-    
-    if (!is.null(pdata)) {
-
-        if (any(!is.null(strings))) stop("strings and pdata must not be both specified")
-        glm_name <- pdata$metadata$glm_name
-        roi_set <- pdata$metadata$roi_set
-        prewhitened <- pdata$metadata$prewhitened
-        shrinkage_var <- pdata$metadata$shrinkage_var
-        shrinkage_cov <- pdata$metadata$shrinkage_cov
-        if (is.parcellated_image(pdata)) {
-            prefix <- paste0("pimage-", prefix)
-            bad_vertices <- ""
-        } else if (is.parcellated_data(pdata)) {
-            bad_vertices <- paste0("badvertices-", switch(only_good_verts + 1, "incl", "rm"))
-            prefix <- paste0("pdata-", prefix)
-        } else stop("if pdata supplied must be either parcellated_image or parcellated_data")
-
-    } else {
-        
-        if (any(is.null(strings))) stop("missing character arg")
-        
-        expected <- list(
-            data_type = c("pdata", "pimage"),
-            glm_name = c("lsall_1rpm", "lss_1rpm", "item_1rpm"),
-            roi_set = c("Schaefer2018_control", "Schaefer2018_network", "Schaefer2018_parcel"),
-            prewhitened = c("none", "resid", "obs"),
-            only_good_verts = c(TRUE, FALSE)
-        )
-
-        if (!data_type %in% expected$data_type) stop("data_type must be one of ", paste0(expected$data_type, sep = " "))
-        if (!glm_name %in% expected$glm_name) stop("data_type must be one of ", paste0(expected$glm_name, sep = " "))
-        if (!roi_set %in% expected$roi_set) stop("data_type must be one of ", paste0(expected$roi_set, sep = " "))
-        if (!prewhitened %in% expected$prewhitened) stop("data_type must be one of ", paste0(expected$prewhitened, sep = " "))
-        if (data_type == "pdata" && is.null(only_good_verts)) stop("must specify only_good_verts with data_type = pdata")
-        prefix <- paste0(data_type, "-", prefix)
-        if (data_type == "pdata") {
-            bad_vertices <- paste0("badvertices-", switch(only_good_verts + 1, "incl", "rm"))
-        } else bad_vertices <- ""
-    }
-
-    paste0(
-        prefix, "_", 
-        "glm-", glm_name, 
-        "_roiset-", roi_set, 
-        "_prewh-", prewhitened,
-        bad_vertices,
-        filetype
-        )
-
-}
 
 
 
