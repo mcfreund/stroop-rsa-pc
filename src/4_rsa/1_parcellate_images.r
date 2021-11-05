@@ -78,29 +78,30 @@ atlas <- read_atlas(roiset)
 b <- b[subj %in% subjects & session %in% sessions & wave %in% waves]
 b <- arrange(b, subj, wave, session, run, trial_num)
 
-## build data.table of input arguments
-## each row corresponds to a single subj*wave*session*run directory, which contains two giftis (L, R hemi)
-input <- as.data.table(expand.grid(
-    subj = subjs, wave = waves, session = sessions, run = runs,
-    glm = glm_name,
+
+## build data.table of input filenames (giftis; one per hemisphere)
+
+input <- expand.grid(
+    subject = subjects, wave = waves, session = sessions, run = runs, glmname = glmname,
+    hemi = c("L", "R"),
     stringsAsFactors = FALSE
     )
-)
-input$dir_results <- file.path(
-    dir_analysis, input$subj, input$wave, "RESULTS", task, paste0(input$session, "_", input$glm)
+input$filename_gifti <- construct_filenames_gifti(input)
+
+
+## create hdf5 file and group tree
+
+filename_h5 <- construct_filename_h5(prefix = "coef", glmname = glmname, roiset = roiset, prewh = prewh)
+was_created <- h5createFile(filename_h5)
+# create_h5group(filename_h5, subjects[1], waves[1], sessions[1], runs[1], "Vis")
+create_h5groups(
+    filename_h5, subjects = subjects, waves = waves, sessions = sessions, runs = runs, rois = names(atlas$roi)
     )
+
+
 
 ## execute ----
 
-fname <- here(
-    "out", 
-    construct_filename(
-        data_type = "pimage", prefix = "B", filetype = ".h5", 
-        glm_name = glm_name, roi_set = roiset, prewhitened = prewhitened
-        )
-)
-
-was_created <- h5createFile(fname)
 
 for (result_i in seq_len(nrow(input))) {
     
