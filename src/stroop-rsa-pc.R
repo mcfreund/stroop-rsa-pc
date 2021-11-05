@@ -76,12 +76,23 @@ enlist <- function(nms) setNames(vector("list", length(nms)), nms)
 #   apply(do.call(rbind, x), 2, as.list)  ## stack and reslice
 # }
 
+Var <- function(x, dim = 1, ...) {
+  ##https://stackoverflow.com/questions/25099825/row-wise-variance-of-a-matrix-in-r
+  if(dim == 1){
+     rowSums((x - rowMeans(x, ...))^2, ...)/(dim(x)[2] - 1)
+  } else if (dim == 2) {
+     rowSums((t(x) - colMeans(x, ...))^2, ...)/(dim(x)[1] - 1)
+  } else stop("Please enter valid dimension")
+}
 
 
-## classef: "atlas"
+## classdef: "atlas"
 ## see here for more: https://github.com/mcfreund/psychomet/tree/master/in
 
-read_atlas <- function(roiset = "Schaefer2018_control", dir_atlas = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/") {
+read_atlas <- function(
+    roiset = "Schaefer2018_control", 
+    dir_atlas = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/"
+    ) {
     
     configured <- c("Schaefer2018_control", "Schaefer2018_parcel", "Schaefer2018_network")
     if (!roiset %in% configured) stop("roiset not configured")
@@ -158,7 +169,10 @@ parcellate_data <- function(x, atlas) {
 
 construct_filename_gifti <- function(
     subject, wave, session, run, glmname, hemi,
-    task = "Stroop", base_dir = here::here("out", "glms"), prefix = "STATS", suffix = "REML.func.gii"
+    task = "Stroop", 
+    base_dir = here::here("out", "glms"), 
+    prefix = "STATS", 
+    suffix = "REML.func.gii"
     ){
     
     arg <- as.list(environment())
@@ -173,8 +187,12 @@ construct_filename_gifti <- function(
 
 
 construct_filenames_gifti <- function(
-    subjects, waves, sessions, runs, glmnames, hemis = c("L", "R"), 
-    task = "Stroop", base_dir = here::here("out", "glms"), prefix = "STATS", suffix = "REML.func.gii",
+    subjects, waves, sessions, runs, glmnames, 
+    hemis = c("L", "R"), 
+    task = "Stroop", 
+    base_dir = here::here("out", "glms"), 
+    prefix = "STATS", 
+    suffix = "REML.func.gii",
     returnDT = TRUE
     ){
     
@@ -211,7 +229,8 @@ construct_filenames_gifti <- function(
 
 construct_filename_h5 <- function(
     prefix, glmname, roiset, prewh,
-    base_dir = here::here("out"), suffix = ".h5"
+    base_dir = here::here("out"), 
+    suffix = ".h5"
     ){
     
     arg <- as.list(environment())
@@ -225,12 +244,28 @@ construct_filename_h5 <- function(
 
 ## I/O with hdf5 (wrappers for rhdf5 functions)
 
-create_h5groups <- function(filename, subjects, waves = NULL, sessions = NULL, runs = NULL, rois = NULL){
+get_path_h5 <- function(subject, wave, session, run, roi, dataname) {
+    arg_len1 <- list(subject, wave, session, run)
+    if (any(vapply(arg_len1, length, numeric(1)) > 1)) stop("not configured for >1 length")
+    if (length(roi) == 1) {
+        paste0(c(subject, wave, session, run, roi, dataname), collapse = "/")
+    } else {
+        paste0(paste0(c(subject, wave, session, run), collapse = "/"), "/", roi, "/", dataname)
+    }
+}
+
+create_h5groups <- function(
+    filename, subjects, 
+    waves = NULL, 
+    sessions = NULL, 
+    runs = NULL, 
+    rois = NULL
+    ){
     
     f <- function(filename, ...) {
         x <- expand.grid(..., stringsAsFactors = FALSE)
         paths <- paste0("/", apply(x, 1, paste0, collapse = "/"))
-        lapply(paths, rhdf5::h5createGroup, file = filename)
+        suppressMessages(lapply(paths, rhdf5::h5createGroup, file = filename))
     }
 
     f(filename, subjects)
@@ -249,254 +284,4 @@ create_h5groups <- function(filename, subjects, waves = NULL, sessions = NULL, r
     
     rhdf5::h5closeAll()
 
-} 
-
-
-
-
-## classdef: "parcellated_data"
-## https://adv-r.hadley.nz/s3.html, sec 13.3.1
-
-## parellated_data
-## list of lenth two: data and labels
-## data: a data.table 
-##      - contains a list-column of feature (e.g., vertex) by obs (e.g., trial) matrices, one matrix per row.
-##      - other columns specify information about each row's data matrix. e.g., roi, fold, subject, session, wave, ...
-##      - in all likelihood, other columns contain infomation that could vary across rows.
-## metadata: a list of infor that likely does not vary across rows of data
-##      - e.g., glm_name, prewhitened, shrinkage_var, shrinkage_cov, ...
-##
-## parcellated_image
-## parcellated_data object whos features are vertices and that contains an additional list-column of "bad_verts".
-## bad_verts are integer vectors that index vertices with no measured fMRI signal.
-
-# new_parcellated_data <- function(
-#     x = data.table::data.table(),
-#     glm_name = character(), 
-#     roi_set = character(), 
-#     prewhitened = character(), 
-#     shrinkage_var = numeric(),
-#     shrinkage_cov = numeric()
-#     ) {
-#     stopifnot(
-#         data.table::is.data.table(x) && is.character(glm_name) && is.character(roi_set) && is.character(prewhitened) && 
-#         is.numeric(shrinkage_var) && is.numeric(shrinkage_cov)
-#         )
-#     obj <- list(
-#         data = x,
-#         metadata = list(glm_name = glm_name, roi_set = roi_set, prewhitened = prewhitened, shrinkage_var = shrinkage_var, shrinkage_cov = shrinkage_cov)
-#         )
-#     structure(obj, class = c("parcellated_data", "list"))
-# }
-
-# new_parcellated_image <- function(...) {
-#     x <- new_parcellated_data(...)
-#     class(x) <- c("parcellated_image", class(x))
-#     x
-# }
-
-#validate_parcellated_data <- function()  ## TODO: ensure all attributes are of length 1
-#validate_parcellated_image  ## check bad_vertices
-
-
-# validate_parcellated_image <- function(x) {
-#     ## check values within data.table
-#     ## check consistency of features across folds, obs across rois
-#     ## check values of attr
-    
-#     if (!identical("list", unique(vapply(x, class, character(1))))) stop("x is not nested list")
-#     if (any(!c("data", "labels") %in% names(x))) stop("x does not contain 'data' or 'labels' names")
-    
-#     x_data <- x$data
-#     x_labels <- x$labels
-#     if (!identical("list", unique(vapply(x_data, class, character(1))))) stop("x$data is not nested list")
-#     if (!identical("character", unique(vapply(x_labels, class, character(1))))) stop("x$labels is not list of character vectors")
-    
-#     n_fold_data <- unique(vapply(x_data, length, numeric(1)))
-#     n_fold_label <- length(x_labels)
-#     if (length(n_fold_data) != 1L) stop("Contains differing numbers of folds across ROIs.")
-#     if (n_fold_data != n_fold_label) stop("Mismached folds in data and labels.")
-
-#     if (any(duplicated(names(x_data)))) stop("x$data contains duplicate ROI names")
-
-#     u <- unlist(x_data, recursive = FALSE)
-#     if (any(duplicated(u))) stop("x$data contains duplicate roi*folds")
-#     vapply(u, class, character(1))
-#     n_obs <- unique(vapply(u, ncol, numeric(1)))
-#     if (length(n_obs) != 1L) stop("x$data number of observations")
-    
-# }
-
-#merge.parcellated_data
-
-
-## converting list of giftis to parcellated_image object
-
-# giftis_to_parcellated_image <- function(
-#     giftis, folds, hemis, atlas, colname_data, 
-#     subject, wave, session, task,
-#     glm_name, roi_set, prewhitened, shrinkage_var, shrinkage_cov,
-#     pattern = NULL
-#     ) {
-#     ## giftis: list of gifti images of length N_folds*N_hemi (one element per fold*hemi)
-#     ## hemis, folds: vectors of length length(giftis), specifying hemi and fold value per element of gifti
-#     ## atlas: list of data and key of parcellation atlas
-   
-#     ## type checks
-   
-#     if (!(length(giftis) == length(folds) && length(folds) == length(hemis))) stop("giftis must have length equal to length(folds) == length(hemis)")
-#     if (class(giftis) != "list") stop("giftis must be of class list")
-#     if (!identical(unique(vapply(giftis, class, "")), "gifti")) stop("giftis must contain only elements of class gifti")
-#     if (!is.character(folds)) stop("folds must be class character")
-#     if (!is.character(hemis)) stop("hemis must be class character")
-#     if (!any(hemis %in% c("L", "R"))) stop("hemis not in L, R")
-#     if (length(hemis) %% 2 != 0L) stop("length(hemis) must be even number")
-#     ## TODO: ADD ATLAS CHECKS
-#     if (!(is.character(pattern) || is.null(pattern))) stop("pattern must be character or NULL")
-    
-#     ## extract data and labels, concatenate hemispheres, and parcellate
-#     l <- split(giftis, folds)
-#     hemis_split <- split(hemis, folds)  ## for reordering
-#     data <- Map(function(a, b, pattern) concat_hemis(a, b, pattern), a = l, b = hemis_split, pattern = pattern)
-#     parcs <- lapply(data, parcellate_data, atlas = atlas)
-    
-#     ## combine in data.table
-
-#     u <- unlist(parcs, recursive = FALSE)
-#     dt <- data.table::data.table(  ## get roi/fold strings from names(u) to ensure order match w/ u
-#         roi = gsub(paste0(unique(folds), "\\.", collapse = "|"), "", names(u)),
-#         fold = gsub(paste0("\\.", unique(names(atlas$rois)), collapse = "|"), "", names(u)),
-#         subject = subject,
-#         wave = wave,
-#         session = session,
-#         task = task
-#     )
-#     data.table::setkey(dt, roi, fold, subject, wave, session, task)
-#     #names(u)[match(paste0(dt$fold, ".", dt$roi), names(u))] == paste0(dt$fold, ".", dt$roi)
-#     u <- u[match(paste0(dt$fold, ".", dt$roi), names(u))]  ## reorder u to match dt
-#     data.table::set(dt, j = colname_data, value = u)  ## add u
-    
-#     ## "bad list"
-
-#     bad_vertices <- lapply(u, function(.x) which(!apply(.x, 1, var) > 0))  ## verts with no variance over obs in each fold
-#     set(dt, j = "bad_vertices", value = bad_vertices)
-#     #bad_vertices <- lapply(split(bad_vertices, dt$roi), function(x) Reduce(union, x))  ## union over folds
-#     #bad_vertices <- bad_vertices[lapply(bad_vertices, length) > 0]
-
-#     new_parcellated_image(
-#         dt,
-#         glm_name = glm_name, roi_set = roi_set, prewhitened = prewhitened, shrinkage_var = shrinkage_var, shrinkage_cov = shrinkage_cov
-#         )
-
-# }
-
-# is.parcellated_data <- function(x) inherits(x, "parcellated_data")
-# is.parcellated_image <- function(x) inherits(x, "parcellated_image")
-
-
-
-# ## methods
-
-# print.parcellated_data <- function(x) print(x$data)
-# print.parcellated_image <- function(x) {
-#     print(x$data)
-#     cat( 
-#         sum(vapply(x$data$bad_vertices, length, numeric(1))), "bad vertices in",  
-#         length(x$data$bad_vertices), "ROI(s)\n"
-#         )
-# }
-
-## coef.parcellated_image
-## coef.parcellated_data
-## as_array
-## lapply_parcellated_data
-## Map_parcellated_data
-## relabel
-
-# parcellated_lapply <- function(x, f, ..., as_parcellated_list = TRUE) {
-#     if (!is.parcellated_data(x)) stop("not parcellated_data")  ## add check to is....() for same number of cols across ROIs.
-#     x$data <- parallel::mclapply(x$data, f, ...)
-#     if (as_parcellated_list && !is.parcellated_list(x)) stop("result no longer parcellated_list")    
-#     x
-# }
-
-# coef.parcellated_list <- function(x, rois = NULL, folds = NULL, good_vertices = TRUE, reduce = TRUE) {
-    
-#     get_good_vertices_loop <- function(.data_roi, .good_vertices_roi) lapply(.data_roi, function(.x) .x[.good_vertices_roi, ])
-
-#     if (is.null(rois)) {
-#         out <- x$data
-#     } else {
-#         out <- x$data[rois]
-#     }
-
-#     if (!is.null(folds)) out <- lapply(out, function(a) a[folds])
-
-#     if (good_vertices) {
-#         if (!is.null(rois)) {
-#             good_vertices_rois <- x$good_vertices[rois, drop = FALSE]
-#         } else {
-#             good_vertices_rois <- x$good_vertices
-#         }
-#         out <- Map(function(a, b) get_good_vertices_loop(a, b), out, good_vertices_rois)
-#     }
-
-#     if (reduce) {
-#         if (length(rois) == 1) {  ## when only one ROI selected
-#             out <- out[[1]]
-#             if (length(folds) == 1) out <- out[[1]]
-#         } else if (length(folds) == 1) {
-#             out <- lapply(out, function(a) a[[1]])
-#         }
-#     }
-
-#     return(out)
-
-# }
-
-
-# relabel <- function(pdata, colname_data, nms) {
-#     if (!is.character(colname_data) && length(colname_data) == 1L) stop("colname must be character(1)")
-#     if (!is.list(nms)) stop("nms must be list")
-#     if (length(nms) != length(unique(pdata$data$fold))) stop("length(nms) must equal number of folds")
-    
-#     for (row_i in seq_len(nrow(pdata$data))) {
-#         if (ncol(pdata$data[[colname_data]][row_i][[1]]) != length(nms[[pdata$data[row_i, fold]]])) stop(paste0("ncol mismatch: row ", row_i))
-#         colnames(pdata$data[[colname_data]][row_i][[1]]) <- nms[[pdata$data[row_i, fold]]]
-#     }
-    
-#     pdata
-
-# }
-
-
-
-
-
-# as.array.parcellated_list <- function(x) {
-#     if (!is.parcellated_list(x)) stop("not parcellated_list")  ## add check to is....() for same number of cols across ROIs.
-#     #n_cols <- unlist(lapply(x$data, function(x) lapply(x, ncol)))
-#     #n_unique_ncols <- length(unique(n_cols))
-#     n_rows <- unlist(lapply(x$data, function(x) lapply(x, nrow)))
-#     n_unique_nrows <- length(unique(n_rows))
-#     if (n_unique_nrows != 1L) stop("n_rows must be matched across folds")
-
-#     nms <- list(
-#         Var1 = rownames(x$data[[1]][[1]]),
-#         Var2 = colnames(x$data[[1]][[1]]),
-#         fold = names(x$data[[1]]),
-#         roi = names(x$data)
-#     )
-    
-#     u <- unlist(x$data, recursive = FALSE)
-#     u <- u[sort(combo_paste(nms$roi, nms$fold, sep = "."))]  ## sort b/c unlist screws up order?
-
-#     a <- abind::abind(u, along = 0)
-#     ap <- aperm(a, c(2, 3, 1))
-#     dim(ap) <- lapply(nms, length)
-#     dimnames(ap) <- nms
-    
-#     ap
-
-# }
-
+}
