@@ -242,112 +242,6 @@ create_h5groups <- function(filename, subjects, waves = NULL, sessions = NULL, r
 
 
 
-
-
-
-# write_nested_h5 <- function(x, colname_data, file_name, data_name = colname_data) {
-    
-#     d <- x$data
-#     files <- apply(d[, .(subject, session, wave, roi, fold)], 1, paste0, collapse = "/")
-#     data <- d[[colname_data]]
-    
-#     UseMethod("write_nested_h5")
-# }
-
-# write_nested_h5.parcellated_data <- function(x, colname_data, file_name, data_name = colname_data) {
-
-#     for (file_i in seq_along(files)) {
-#         g <- files[file_i]
-#         x <- data[[file_i]]
-#         rhdf5::h5write(x, file_name, paste0(c(g, data_name), collapse = "/"))
-#     }
-
-# }
-
-
-# write_nested_h5.parcellated_image <- function(x, colname_data, file_name, data_name = colname_data) {
-
-#     bad_vertices <- d$bad_vertices
-
-#     for (file_i in seq_along(files)) {
-#         g <- files[file_i]
-#         x <- data[[file_i]]
-#         if (length(bad_vertices[[file_i]]) > 0) {
-#             rhdf5::h5write(bad_vertices[[file_i]], file_name, paste0(c(g, "bad_vertices"), collapse = "/"))
-#         }
-#         rhdf5::h5write(x, file_name, paste0(c(g, data_name), collapse = "/"))
-#     }
-
-# }
-
-
-
-# construct_filename <- function(
-#     prefix,
-#     filetype,
-#     pdata = NULL,
-#     data_type = NULL,
-#     glm_name = NULL,
-#     roi_set = NULL,
-#     prewhitened = NULL,
-#     only_good_verts = NULL
-#     ) {
-
-#     strings <- c(data_type, glm_name, roi_set, prewhitened)
-    
-#     if (!is.null(pdata)) {
-
-#         if (any(!is.null(strings))) stop("strings and pdata must not be both specified")
-#         glm_name <- pdata$metadata$glm_name
-#         roi_set <- pdata$metadata$roi_set
-#         prewhitened <- pdata$metadata$prewhitened
-#         shrinkage_var <- pdata$metadata$shrinkage_var
-#         shrinkage_cov <- pdata$metadata$shrinkage_cov
-#         if (is.parcellated_image(pdata)) {
-#             prefix <- paste0("pimage-", prefix)
-#             bad_vertices <- ""
-#         } else if (is.parcellated_data(pdata)) {
-#             bad_vertices <- paste0("badvertices-", switch(only_good_verts + 1, "incl", "rm"))
-#             prefix <- paste0("pdata-", prefix)
-#         } else stop("if pdata supplied must be either parcellated_image or parcellated_data")
-
-#     } else {
-        
-#         if (any(is.null(strings))) stop("missing character arg")
-        
-#         expected <- list(
-#             data_type = c("pdata", "pimage"),
-#             glm_name = c("lsall_1rpm", "lss_1rpm", "item_1rpm"),
-#             roi_set = c("Schaefer2018_control", "Schaefer2018_network", "Schaefer2018_parcel"),
-#             prewhitened = c("none", "resid", "obs"),
-#             only_good_verts = c(TRUE, FALSE)
-#         )
-
-#         if (!data_type %in% expected$data_type) stop("data_type must be one of ", paste0(expected$data_type, sep = " "))
-#         if (!glm_name %in% expected$glm_name) stop("data_type must be one of ", paste0(expected$glm_name, sep = " "))
-#         if (!roi_set %in% expected$roi_set) stop("data_type must be one of ", paste0(expected$roi_set, sep = " "))
-#         if (!prewhitened %in% expected$prewhitened) stop("data_type must be one of ", paste0(expected$prewhitened, sep = " "))
-#         if (data_type == "pdata" && is.null(only_good_verts)) stop("must specify only_good_verts with data_type = pdata")
-#         prefix <- paste0(data_type, "-", prefix)
-#         if (data_type == "pdata") {
-#             bad_vertices <- paste0("badvertices-", switch(only_good_verts + 1, "incl", "rm"))
-#         } else bad_vertices <- ""
-#     }
-
-#     paste0(
-#         prefix, "_", 
-#         "glm-", glm_name, 
-#         "_roiset-", roi_set, 
-#         "_prewh-", prewhitened,
-#         bad_vertices,
-#         filetype
-#         )
-
-# }
-
-
-
-
 ## classdef: "parcellated_data"
 ## https://adv-r.hadley.nz/s3.html, sec 13.3.1
 
@@ -426,79 +320,79 @@ create_h5groups <- function(filename, subjects, waves = NULL, sessions = NULL, r
 
 ## converting list of giftis to parcellated_image object
 
-giftis_to_parcellated_image <- function(
-    giftis, folds, hemis, atlas, colname_data, 
-    subject, wave, session, task,
-    glm_name, roi_set, prewhitened, shrinkage_var, shrinkage_cov,
-    pattern = NULL
-    ) {
-    ## giftis: list of gifti images of length N_folds*N_hemi (one element per fold*hemi)
-    ## hemis, folds: vectors of length length(giftis), specifying hemi and fold value per element of gifti
-    ## atlas: list of data and key of parcellation atlas
+# giftis_to_parcellated_image <- function(
+#     giftis, folds, hemis, atlas, colname_data, 
+#     subject, wave, session, task,
+#     glm_name, roi_set, prewhitened, shrinkage_var, shrinkage_cov,
+#     pattern = NULL
+#     ) {
+#     ## giftis: list of gifti images of length N_folds*N_hemi (one element per fold*hemi)
+#     ## hemis, folds: vectors of length length(giftis), specifying hemi and fold value per element of gifti
+#     ## atlas: list of data and key of parcellation atlas
    
-    ## type checks
+#     ## type checks
    
-    if (!(length(giftis) == length(folds) && length(folds) == length(hemis))) stop("giftis must have length equal to length(folds) == length(hemis)")
-    if (class(giftis) != "list") stop("giftis must be of class list")
-    if (!identical(unique(vapply(giftis, class, "")), "gifti")) stop("giftis must contain only elements of class gifti")
-    if (!is.character(folds)) stop("folds must be class character")
-    if (!is.character(hemis)) stop("hemis must be class character")
-    if (!any(hemis %in% c("L", "R"))) stop("hemis not in L, R")
-    if (length(hemis) %% 2 != 0L) stop("length(hemis) must be even number")
-    ## TODO: ADD ATLAS CHECKS
-    if (!(is.character(pattern) || is.null(pattern))) stop("pattern must be character or NULL")
+#     if (!(length(giftis) == length(folds) && length(folds) == length(hemis))) stop("giftis must have length equal to length(folds) == length(hemis)")
+#     if (class(giftis) != "list") stop("giftis must be of class list")
+#     if (!identical(unique(vapply(giftis, class, "")), "gifti")) stop("giftis must contain only elements of class gifti")
+#     if (!is.character(folds)) stop("folds must be class character")
+#     if (!is.character(hemis)) stop("hemis must be class character")
+#     if (!any(hemis %in% c("L", "R"))) stop("hemis not in L, R")
+#     if (length(hemis) %% 2 != 0L) stop("length(hemis) must be even number")
+#     ## TODO: ADD ATLAS CHECKS
+#     if (!(is.character(pattern) || is.null(pattern))) stop("pattern must be character or NULL")
     
-    ## extract data and labels, concatenate hemispheres, and parcellate
-    l <- split(giftis, folds)
-    hemis_split <- split(hemis, folds)  ## for reordering
-    data <- Map(function(a, b, pattern) concat_hemis(a, b, pattern), a = l, b = hemis_split, pattern = pattern)
-    parcs <- lapply(data, parcellate_data, atlas = atlas)
+#     ## extract data and labels, concatenate hemispheres, and parcellate
+#     l <- split(giftis, folds)
+#     hemis_split <- split(hemis, folds)  ## for reordering
+#     data <- Map(function(a, b, pattern) concat_hemis(a, b, pattern), a = l, b = hemis_split, pattern = pattern)
+#     parcs <- lapply(data, parcellate_data, atlas = atlas)
     
-    ## combine in data.table
+#     ## combine in data.table
 
-    u <- unlist(parcs, recursive = FALSE)
-    dt <- data.table::data.table(  ## get roi/fold strings from names(u) to ensure order match w/ u
-        roi = gsub(paste0(unique(folds), "\\.", collapse = "|"), "", names(u)),
-        fold = gsub(paste0("\\.", unique(names(atlas$rois)), collapse = "|"), "", names(u)),
-        subject = subject,
-        wave = wave,
-        session = session,
-        task = task
-    )
-    data.table::setkey(dt, roi, fold, subject, wave, session, task)
-    #names(u)[match(paste0(dt$fold, ".", dt$roi), names(u))] == paste0(dt$fold, ".", dt$roi)
-    u <- u[match(paste0(dt$fold, ".", dt$roi), names(u))]  ## reorder u to match dt
-    data.table::set(dt, j = colname_data, value = u)  ## add u
+#     u <- unlist(parcs, recursive = FALSE)
+#     dt <- data.table::data.table(  ## get roi/fold strings from names(u) to ensure order match w/ u
+#         roi = gsub(paste0(unique(folds), "\\.", collapse = "|"), "", names(u)),
+#         fold = gsub(paste0("\\.", unique(names(atlas$rois)), collapse = "|"), "", names(u)),
+#         subject = subject,
+#         wave = wave,
+#         session = session,
+#         task = task
+#     )
+#     data.table::setkey(dt, roi, fold, subject, wave, session, task)
+#     #names(u)[match(paste0(dt$fold, ".", dt$roi), names(u))] == paste0(dt$fold, ".", dt$roi)
+#     u <- u[match(paste0(dt$fold, ".", dt$roi), names(u))]  ## reorder u to match dt
+#     data.table::set(dt, j = colname_data, value = u)  ## add u
     
-    ## "bad list"
+#     ## "bad list"
 
-    bad_vertices <- lapply(u, function(.x) which(!apply(.x, 1, var) > 0))  ## verts with no variance over obs in each fold
-    set(dt, j = "bad_vertices", value = bad_vertices)
-    #bad_vertices <- lapply(split(bad_vertices, dt$roi), function(x) Reduce(union, x))  ## union over folds
-    #bad_vertices <- bad_vertices[lapply(bad_vertices, length) > 0]
+#     bad_vertices <- lapply(u, function(.x) which(!apply(.x, 1, var) > 0))  ## verts with no variance over obs in each fold
+#     set(dt, j = "bad_vertices", value = bad_vertices)
+#     #bad_vertices <- lapply(split(bad_vertices, dt$roi), function(x) Reduce(union, x))  ## union over folds
+#     #bad_vertices <- bad_vertices[lapply(bad_vertices, length) > 0]
 
-    new_parcellated_image(
-        dt,
-        glm_name = glm_name, roi_set = roi_set, prewhitened = prewhitened, shrinkage_var = shrinkage_var, shrinkage_cov = shrinkage_cov
-        )
+#     new_parcellated_image(
+#         dt,
+#         glm_name = glm_name, roi_set = roi_set, prewhitened = prewhitened, shrinkage_var = shrinkage_var, shrinkage_cov = shrinkage_cov
+#         )
 
-}
+# }
 
-is.parcellated_data <- function(x) inherits(x, "parcellated_data")
-is.parcellated_image <- function(x) inherits(x, "parcellated_image")
+# is.parcellated_data <- function(x) inherits(x, "parcellated_data")
+# is.parcellated_image <- function(x) inherits(x, "parcellated_image")
 
 
 
-## methods
+# ## methods
 
-print.parcellated_data <- function(x) print(x$data)
-print.parcellated_image <- function(x) {
-    print(x$data)
-    cat( 
-        sum(vapply(x$data$bad_vertices, length, numeric(1))), "bad vertices in",  
-        length(x$data$bad_vertices), "ROI(s)\n"
-        )
-}
+# print.parcellated_data <- function(x) print(x$data)
+# print.parcellated_image <- function(x) {
+#     print(x$data)
+#     cat( 
+#         sum(vapply(x$data$bad_vertices, length, numeric(1))), "bad vertices in",  
+#         length(x$data$bad_vertices), "ROI(s)\n"
+#         )
+# }
 
 ## coef.parcellated_image
 ## coef.parcellated_data
@@ -549,19 +443,19 @@ print.parcellated_image <- function(x) {
 # }
 
 
-relabel <- function(pdata, colname_data, nms) {
-    if (!is.character(colname_data) && length(colname_data) == 1L) stop("colname must be character(1)")
-    if (!is.list(nms)) stop("nms must be list")
-    if (length(nms) != length(unique(pdata$data$fold))) stop("length(nms) must equal number of folds")
+# relabel <- function(pdata, colname_data, nms) {
+#     if (!is.character(colname_data) && length(colname_data) == 1L) stop("colname must be character(1)")
+#     if (!is.list(nms)) stop("nms must be list")
+#     if (length(nms) != length(unique(pdata$data$fold))) stop("length(nms) must equal number of folds")
     
-    for (row_i in seq_len(nrow(pdata$data))) {
-        if (ncol(pdata$data[[colname_data]][row_i][[1]]) != length(nms[[pdata$data[row_i, fold]]])) stop(paste0("ncol mismatch: row ", row_i))
-        colnames(pdata$data[[colname_data]][row_i][[1]]) <- nms[[pdata$data[row_i, fold]]]
-    }
+#     for (row_i in seq_len(nrow(pdata$data))) {
+#         if (ncol(pdata$data[[colname_data]][row_i][[1]]) != length(nms[[pdata$data[row_i, fold]]])) stop(paste0("ncol mismatch: row ", row_i))
+#         colnames(pdata$data[[colname_data]][row_i][[1]]) <- nms[[pdata$data[row_i, fold]]]
+#     }
     
-    pdata
+#     pdata
 
-}
+# }
 
 
 
