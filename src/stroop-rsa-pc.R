@@ -244,22 +244,63 @@ construct_filename_h5 <- function(
 
 ## hdf5 interface functions
 
-## writing files.
-## one file per subject*wave*session*(task*run)*roi.
-## dataset prefix encodes data 'type' (coefs, resids, invcov, ...).
-## analysis variables (glm, prewh, ...) encoded in dataset suffix.
-## a one-file-per-sample approach as discussed here: https://github.com/lgatto/MSnbase/issues/403
+## reading/writing parcellated data files (matrices built from segmented gifti images).
+
+## dataset_prefix encodes data 'type' (coefs, resids, invcov, ...).
+## analysis variables (glm, prewh, ...) encoded in dataset_suffix.
+## these functions are structured to support a one file per "sample" approach: subject*wave*session*(task*run)*roi
+## due to separate files, the separate "samples" can be read/written in parallel.
+## (see here for helpful discussion of issues: https://github.com/lgatto/MSnbase/issues/403)
+## in the present case, this allows essentially all central operations of a script to be wrapped in a parallelizing 
+## function (such as foreach::foreach()), simplifying development of fast code.
+## the downside of this approach is that the directory containing these files will be very wide, with many thousands of
+## files.
+## thus this directory (parcellated/.d) will be hidden.
+## to aid in accessing (subsets of) these files/datasets, a master.h5 file containing external links to each dataset
+## will be written in the top directory (parcellated).
+## importantly, this master file will need to be created *outside* of the parallelizing loop (in serial).
+## for convenience, write_dset() returns the filename and dataset name of the written data as a named character vector.
+## write_links() therefore a list of such character vectors, loops over them serially, and creates this master file.
+## an additional option includes saving of colnames.
+## write_dset() optionally saves colnames of matrix as dataset attribute.
+## read_dset() optionally reads colnames and adds as dimnames attribute to R matrix.
+
+
+construct_filename_h5 <- function(
+    subject, wave, session, run, roiset, roi, 
+    base_dir = here::here("out", "parcellated", ".d")
+    ){
+    paste0(base_dir, .Platform$file.sep, subject, "_", wave, "_", session, "_", run, "_", roiset, "_", roi, ".h5")
+}
+construct_dsetname_h5 <- function(
+    dset_prefix, subject, wave, session, run, roiset, roi, 
+    glmname, prewh,
+    base_dir = here::here("out", "parcellated", ".d")
+    ){
+    paste0(dset_prefix, "_", subject, wave, session, run, roiset, roi, "_", "_glm-", glmname, "_prewh-", prewh)
+}
+
 
 write_dset <- function(
     mat, dset_prefix, 
     subject, wave, session, run, roiset, roi, 
     glmname, prewh,
-    base_dir = here::here("out", "parcellated", ".d")
+    base_dir = here::here("out", "parcellated", ".d"),
+    write_colnames = FALSE
     ) {
-    id <- paste0(subject, "_", wave, "_", session, "_", run, "_", roiset, "_", roi)
-    file_name <- paste0(base_dir, .Platform$file.sep, id, ".h5")
-    dset_name <- paste0(dset_prefix, "_", id, "_", "_glm-", glmname, "_prewh-", prewh)
+    #id <- paste0(subject, "_", wave, "_", session, "_", run, "_", roiset, "_", roi)
+    #file_name <- paste0(base_dir, .Platform$file.sep, id, ".h5")
+    file_name <- construct_filename_h5(subject, wave, session, run, roiset, roi, base_dir)
+    #dset_name <- paste0(dset_prefix, "_", id, "_", "_glm-", glmname, "_prewh-", prewh)
+    dset_name <- construct_dsetname_h5(dset_prefix, subject, wave, session, run, roiset, roi, glmname, prewh, base_dir)
     rhdf5::h5write(mat, file = file_name, name = dset_name)
+    if (write_colnames) {
+        fid <- rhdf5::H5Fopen(file_name)
+        did <- rhdf5::H5Dopen(fid, dset_name)
+        rhdf5::h5writeAttribute(colnames(mat), did, "colnames")
+        rhdf5::H5Dclose(did)
+        rhdf5::H5Fclose(fid)
+    }
     c(file_name = file_name, dset_name = dset_name)
 }
 
@@ -281,6 +322,23 @@ write_links <- function(names_list, base_dir = here::here("out", "parcellated"))
             link_name = dset_name
             )
     }
-    H5Fclose(fid)
+    rhdf5::H5Fclose(fid)
+}
+
+read_dset <- function(
+    dset_prefix, 
+    subject, wave, session, run, roiset, roi, 
+    glmname, prewh,
+    base_dir = here::here("out", "parcellated", ".d"),
+    read_colnames = FALSE
+    ) {
+    file_name <- construct_filename_h5(subject, wave, session, run, roiset, roi)
+    dset_name <- construct_dsetname_h5(dset_prefix, subject, wave, session, run, roiset, roi, glmname, prewh, base_dir)
+    mat <- h5read(file_name, dset_name, read.attributes = read_attributes)
+    if (read_colnames) {
+        attr(mat, "dimnames") <- list(NULL, attr(mat, "colnames"))
+        attr(mat, "colnames") <- NULL
+    }
+    mat
 }
 
