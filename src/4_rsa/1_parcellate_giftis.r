@@ -33,7 +33,6 @@ library(rhdf5)
 library(foreach)
 library(doParallel)
 source(here("src", "stroop-rsa-pc.R"))
-#h5disableFileLocking()
 
 ## set variables
 
@@ -70,14 +69,6 @@ rois <- names(atlas$roi)
 
 input <- construct_filenames_gifti(subject = subjects, wave = waves, session = sessions, run = runs, glmname = glmname)
 
-## create hdf5 file and group tree
-
-filename_h5 <- construct_filename_h5(prefix = "coef", glmname = glmname, roiset = roiset, prewh = prewh)
-if (!file.exists(filename_h5)) {
-    was_created <- h5createFile(filename_h5)
-    create_h5groups(filename_h5, subjects = subjects, waves = waves, sessions = sessions, runs = runs, rois = rois)
-}
-
 
 ## execute ----
 
@@ -86,7 +77,7 @@ l <- split(input, interaction(input$subject, input$wave, input$session, input$ru
 
 cl <- makeCluster(n_core - 2, type = "FORK")
 registerDoParallel(cl)
-foreach(glm_i = seq_along(l)) %dopar% {
+names_for_link <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
     
     input_val <- l[[glm_i]]
     subject <- unique(input_val$subj)
@@ -100,14 +91,18 @@ foreach(glm_i = seq_along(l)) %dopar% {
         concat_hemis(input_val$hemi, pattern = "_Coef") %>% ## extract data and concatenate
         parcellate_data(atlas)  ## split matrix into list of length n_roi
     #triallabs <- b[subj == subject & wave == wave & session == session & run == run]$item  ## get trialtypes
-    data_names <- 
-        get_path_h5(subject = subject, wave = wave, session = session, run = run, roi = rois, dataname = "coefs")
-    ## write:
-    Map(function(x, y, file) h5write(obj = x, name = y, file = file), parcs, data_names, file = filename_h5)
-    h5closeAll()
-    #h5write(parcs[[1]], data_names[[1]], file = filename_h5)
+    nms <- Map(
+        function(x, y, ...) write_dset(mat = x, roi = y, ...), 
+        parcs, names(parcs),
+        dset_prefix = "coefs",
+        subject = subject, wave = wave, session = session, run = run, 
+        roiset = roiset, glmname = glmname, prewh = prewh
+        )
+    nms
 }
 stopImplicitCluster()
 
-file_summary <- as.data.table(h5ls(filename_h5))
-fwrite(file_summary, gsub(".h5$", ".csv", filename_h5))
+## update master.h5
+write_links(names_for_link)
+#fid <- H5Fopen(here("out", "parcellated", "master.h5"))
+#h5closeAll()
