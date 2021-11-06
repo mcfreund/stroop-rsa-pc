@@ -86,6 +86,13 @@ Var <- function(x, dim = 1, ...) {
 }
 
 
+## reading behavioral data / trial-level information
+
+read_trialinfo <- function() {
+    b <- data.table::fread(here::here("in", "behavior-and-events_stroop_2021-10-20_nice.csv"))
+    dplyr::arrange(b, "subj", "wave", "session", "run", "trial_num")    ## sort to match col order of fmri beta matrix
+}
+
 ## classdef: "atlas"
 ## see here for more: https://github.com/mcfreund/psychomet/tree/master/in
 
