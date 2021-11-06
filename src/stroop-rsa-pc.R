@@ -163,6 +163,11 @@ parcellate_data <- function(x, atlas) {
     out
 }
 
+rename_dim <- function(m, new_names, DIM = 2) {
+    if (!is.array(m)) stop("x must be matrix or array")
+    dimnames(m)[[DIM]] <- new_names
+    m
+}
 
 
 ## filename constructors
