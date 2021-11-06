@@ -1,5 +1,9 @@
 
 
+## reactive test/retest analysis
+
+## 1. parcellate giftis
+
 ## on first run, had to remove DMCC5820265 and DMCC9478705 from subject list (manually)
 
 waves=("wave1" "wave2")
@@ -11,3 +15,8 @@ Rscript ./src/4_rsa/parcellate_giftis.r \
     --waves "wave1 wave2" \
     --sessions "reactive"
 
+## 2. estimate distances
+
+## 3. prewhiten coefs
+
+## 4. regress distances
