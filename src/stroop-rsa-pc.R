@@ -48,11 +48,14 @@ n_trial <- c(
 n_run <- 2
 n_session <- 3
 
-## :: analytic info
+## :: analytic info (expected values)
 
-glmnames <- c("lsall_1rpm", "lss_1rpm", "item_1rpm")
-prewhs <- c("none", "resid", "obs", "rest")
-roisets <- c("Schaefer2018_control", "Schaefer2018_network", "Schaefer2018_parcel", "Glasser2016_parcel")
+expected <- list(
+    glmname = c("lsall_1rpm", "lss_1rpm", "item_1rpm"),
+    prewh   = c("none", "resid", "obs", "rest"),
+    roiset  = 
+        c("Schaefer2018Dev", "Schaefer2018Network", "Schaefer2018Parcel", "Glasser2016Network", "Glasser2016Parcel")
+)
 
 core32 <- c(
   99, 127, 129, 130, 131, 132, 137, 140, 141, 142, 148, 163, 165, 182, 186, 300, 332, 333, 334, 335, 336, 337, 340, 345, 
@@ -101,7 +104,7 @@ read_atlas <- function(
     dir_atlas = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/"
     ) {
     
-    configured <- c("Schaefer2018_control", "Schaefer2018_parcel", "Schaefer2018_network")
+    configured <- c("Schaefer2018Dev", "Schaefer2018Parcel", "Schaefer2018Network")
     if (!roiset %in% configured) stop("roiset not configured")
     
     atlas <- list()
@@ -115,15 +118,15 @@ read_atlas <- function(
             )
         atlas$key <- data.table::fread(here::here("in", "atlas-key_schaefer400-07.csv"))$parcel
 
-        if (roiset == "Schaefer2018_control") {
+        if (roiset == "Schaefer2018Dev") {
             parcel_core32 <- atlas$key[core32]
             parcel_vis <- atlas$key[grep("_Vis_", atlas$key)]
             parcel_sommot <- atlas$key[grep("_SomMot_", atlas$key)]
             parcels_control <- c(core32 = list(parcel_core32), Vis = list(parcel_vis), SomMot = list(parcel_sommot))
             atlas$rois <- c(setNames(as.list(parcel_core32), parcel_core32), parcels_control)
-        } else if ("Schaefer2018_network") {
+        } else if ("Schaefer2018Network") {
             atlas$rois <- split(atlas$key$parcel, get_network(atlas$key$parcel))
-        } else if ("Schaefer2018_parcel") {
+        } else if ("Schaefer2018Parcel") {
             atlas$rois <- split(atlas$key$parcel, atlas$key$parcel)
         }
 
