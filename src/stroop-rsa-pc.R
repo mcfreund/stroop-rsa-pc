@@ -242,46 +242,45 @@ construct_filename_h5 <- function(
 
 
 
-## I/O with hdf5 (wrappers for rhdf5 functions)
+## hdf5 interface functions
 
-get_path_h5 <- function(subject, wave, session, run, roi, dataname) {
-    arg_len1 <- list(subject, wave, session, run)
-    if (any(vapply(arg_len1, length, numeric(1)) > 1)) stop("not configured for >1 length")
-    if (length(roi) == 1) {
-        paste0(c(subject, wave, session, run, roi, dataname), collapse = "/")
+## writing files.
+## one file per subject*wave*session*(task*run)*roi.
+## dataset prefix encodes data 'type' (coefs, resids, invcov, ...).
+## analysis variables (glm, prewh, ...) encoded in dataset suffix.
+## a one-file-per-sample approach as discussed here: https://github.com/lgatto/MSnbase/issues/403
+
+write_dset <- function(
+    mat, dset_prefix, 
+    subject, wave, session, run, roiset, roi, 
+    glmname, prewh,
+    base_dir = here::here("out", "parcellated", ".d")
+    ) {
+    id <- paste0(subject, "_", wave, "_", session, "_", run, "_", roiset, "_", roi)
+    file_name <- paste0(base_dir, .Platform$file.sep, id, ".h5")
+    dset_name <- paste0(dset_prefix, "_", id, "_", "_glm-", glmname, "_prewh-", prewh)
+    rhdf5::h5write(mat, file = file_name, name = dset_name)
+    c(file_name = file_name, dset_name = dset_name)
+}
+
+write_links <- function(names_list, base_dir = here::here("out", "parcellated")){
+    master_file <- paste0(base_dir, .Platform$file.sep, "master.h5")
+    if (!file.exists(master_file)) {
+        fid <- rhdf5::H5Fcreate(master_file)
     } else {
-        paste0(paste0(c(subject, wave, session, run), collapse = "/"), "/", roi, "/", dataname)
+        fid <- rhdf5::H5Fopen(master_file)
     }
+    ## loop through files, creating a link to the dataset in each one:
+    for(f_i in seq_along(names_list)) {
+        f <- names_list[[f_i]]["file_name"]
+        dset_name <- names_list[[f_i]]["dset_name"]
+        rhdf5::H5Lcreate_external(
+            target_file_name = f, 
+            target_obj_name = dset_name,
+            link_loc = fid,
+            link_name = dset_name
+            )
+    }
+    H5Fclose(fid)
 }
 
-create_h5groups <- function(
-    filename, subjects, 
-    waves = NULL, 
-    sessions = NULL, 
-    runs = NULL, 
-    rois = NULL
-    ){
-    
-    f <- function(filename, ...) {
-        x <- expand.grid(..., stringsAsFactors = FALSE)
-        paths <- paste0("/", apply(x, 1, paste0, collapse = "/"))
-        suppressMessages(lapply(paths, rhdf5::h5createGroup, file = filename))
-    }
-
-    f(filename, subjects)
-    if (!is.null(waves)) {
-      f(filename, subjects, waves)
-        if (!is.null(sessions)) {
-            f(filename, subjects, waves, sessions)
-            if (!is.null(runs)) {
-                f(filename, subjects, waves, sessions, runs)
-                if (!is.null(rois)) {
-                    f(filename, subjects, waves, sessions, runs, rois)
-                }
-            }
-        }
-    }
-    
-    rhdf5::h5closeAll()
-
-}
