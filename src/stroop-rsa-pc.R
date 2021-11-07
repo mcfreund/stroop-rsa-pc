@@ -292,7 +292,10 @@ construct_dsetname_h5 <- function(
     glmname, prewh,
     base_dir = here::here("out", "parcellated", ".d")
     ){
-    paste0(dset_prefix, "_", subject, wave, session, run, roiset, roi, "_", "_glm-", glmname, "_prewh-", prewh)
+    paste0(
+        dset_prefix, "__", subject, "__", wave, "__", session, "__", run, "__", roiset, "__", roi, "__", 
+        "glm-", glmname, "__prewh-", prewh
+        )
 }
 
 
@@ -303,10 +306,7 @@ write_dset <- function(
     base_dir = here::here("out", "parcellated", ".d"),
     write_colnames = FALSE
     ) {
-    #id <- paste0(subject, "_", wave, "_", session, "_", run, "_", roiset, "_", roi)
-    #file_name <- paste0(base_dir, .Platform$file.sep, id, ".h5")
     file_name <- construct_filename_h5(subject, wave, session, run, roiset, roi, base_dir)
-    #dset_name <- paste0(dset_prefix, "_", id, "_", "_glm-", glmname, "_prewh-", prewh)
     dset_name <- construct_dsetname_h5(dset_prefix, subject, wave, session, run, roiset, roi, glmname, prewh, base_dir)
     rhdf5::h5write(mat, file = file_name, name = dset_name)
     if (write_colnames) {
