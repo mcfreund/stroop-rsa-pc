@@ -276,9 +276,11 @@ construct_filename_h5 <- function(
 ## importantly, this master file will need to be created *outside* of the parallelizing loop (in serial).
 ## for convenience, write_dset() returns the filename and dataset name of the written data as a named character vector.
 ## write_links() therefore a list of such character vectors, loops over them serially, and creates this master file.
+## read_master() reads this master file of links and does some string editing to make subsetting easier.
 ## an additional option includes saving of colnames.
 ## write_dset() optionally saves colnames of matrix as dataset attribute.
 ## read_dset() optionally reads colnames and adds as dimnames attribute to R matrix.
+## read_dset() uses external links within the master file to access the file/dataset.
 
 
 construct_filename_h5 <- function(
@@ -340,20 +342,31 @@ write_links <- function(names_list, base_dir = here::here("out", "parcellated"))
     rhdf5::H5Fclose(fid)
 }
 
-read_dset <- function(
-    dset_prefix, 
-    subject, wave, session, run, roiset, roi, 
-    glmname, prewh,
-    base_dir = here::here("out", "parcellated", ".d"),
-    read_colnames = FALSE
-    ) {
-    file_name <- construct_filename_h5(subject, wave, session, run, roiset, roi)
-    dset_name <- construct_dsetname_h5(dset_prefix, subject, wave, session, run, roiset, roi, glmname, prewh, base_dir)
-    mat <- h5read(file_name, dset_name, read.attributes = read_attributes)
-    if (read_colnames) {
-        attr(mat, "dimnames") <- list(NULL, attr(mat, "colnames"))
-        attr(mat, "colnames") <- NULL
-    }
-    mat
+read_master <- function(file_name = here("out", "parcellated", "master.h5")) {
+    d <- h5ls(file_name)
+    setDT(d)
+    tidyr::separate(
+        d, name, 
+        into = c("prefix", "subj", "wave", "session", "run", "roiset", "roi", "glm", "prewh"), 
+        sep = "__", remove = FALSE
+        )
 }
 
+parse_dset_name <- function(
+    x, nms = c("prefix", "subj", "wave", "session", "run", "roiset", "roi", "glm", "prewh")
+    ) {
+    tidyr::separate(x, name, nms, sep = "__")
+}
+
+read_dset <- function(filename_master, dset_name, read_colnames = TRUE) {
+    on.exit({
+        try(rhdf5::H5Dclose(did), silent = TRUE)
+        try(rhdf5::H5Fclose(fid), silent = TRUE)
+        })
+
+    fid <- rhdf5::H5Fopen(filename_master)
+    did <- rhdf5::H5Dopen(fid, dset_name)
+    mat <- rhdf5::H5Dread(did)
+    if (read_colnames) colnames(mat) <- rhdf5::h5readAttributes(fid, dset_name)[["colnames"]]
+    mat
+}
