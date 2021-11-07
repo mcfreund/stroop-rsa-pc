@@ -359,14 +359,10 @@ parse_dset_name <- function(
 }
 
 read_dset <- function(filename_master, dset_name, read_colnames = TRUE) {
-    on.exit({
-        try(rhdf5::H5Dclose(did), silent = TRUE)
-        try(rhdf5::H5Fclose(fid), silent = TRUE)
-        })
-
-    fid <- rhdf5::H5Fopen(filename_master)
-    did <- rhdf5::H5Dopen(fid, dset_name)
-    mat <- rhdf5::H5Dread(did)
-    if (read_colnames) colnames(mat) <- rhdf5::h5readAttributes(fid, dset_name)[["colnames"]]
+    mat <- rhdf5::h5read(filename_master, dset_name, read.attributes = TRUE)
+    if (read_colnames) {
+        colnames(mat) <- attr(mat, "colnames")
+        attr(mat, "colnames") <- NULL
+    }
     mat
 }
