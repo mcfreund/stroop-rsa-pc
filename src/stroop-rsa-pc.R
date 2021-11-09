@@ -323,15 +323,20 @@ write_dset <- function(
 
 write_links <- function(names_list, base_dir = here::here("out", "parcellated")){
     master_file <- paste0(base_dir, .Platform$file.sep, "master.h5")
-    if (!file.exists(master_file)) {
+    is_new_file <- !file.exists(master_file)
+    if (is_new_file) {
         fid <- rhdf5::H5Fcreate(master_file)
     } else {
+          ## for checking whether dset_name already exists in master file:
+        info <- rhdf5::h5ls(master_file)  ## do this before opening file so not throw "closeAll()" warning
         fid <- rhdf5::H5Fopen(master_file)
     }
     ## loop through files, creating a link to the dataset in each one:
     for(f_i in seq_along(names_list)) {
         f <- names_list[[f_i]]["file_name"]
         dset_name <- names_list[[f_i]]["dset_name"]
+        ## skip so not attempt to overwrite (will throw error: HDF5. Links. Unable to initialize object.):
+        if (!is_new_file) if (dset_name %in% info$name) next  ## but only if master.h5 was already existing.
         rhdf5::H5Lcreate_external(
             target_file_name = f, 
             target_obj_name = dset_name,
