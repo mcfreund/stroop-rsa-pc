@@ -371,3 +371,74 @@ read_dset <- function(filename_master, dset_name, read_colnames = TRUE) {
     }
     mat
 }
+
+
+
+## math/stats functions
+
+
+average <- function(mat, g) {
+    if (!is.matrix(mat) & is.character(g)) stop("mat must be matrix, g must be character")
+    A <- model.matrix(~ g + 0)
+    new_colnames <- gsub("^g", "", colnames(A))
+    A <- A %*% diag(1/colSums(A))
+    mat_bar <- mat %*% A
+    colnames(mat_bar) <- new_colnames
+    mat_bar
+}
+
+.cvdist <- function(x1, x2, m) {
+    D <- rowSums(tcrossprod(m, x1) * tcrossprod(m, x2))  ## means to scale by num verts
+    dim(D) <- sqrt(c(length(D), length(D)))
+    D
+}
+
+cvdist <- function(x1, x2, m, nms, center = FALSE) {
+    D <- .cvdist(x1, x2, m)
+    attr(D, "x1_ssq") <- sqrt(colSums(x1^2))
+    attr(D, "x2_ssq") <- sqrt(colSums(x2^2))
+    attr(D, "x1_mu") <- colMeans(x1)
+    attr(D, "x2_mu") <- colMeans(x2)
+    attr(D, "n") <- nrow(x1)
+    dimnames(D) <- list(nms, nms)
+    D
+}
+
+
+
+## resampling functions
+
+
+resample <- function(x, ...) x[sample.int(length(x), ...)]  ## NB: see ?sample()
+
+get_resampled_idx <- function(conditions, n_resamples, expected_min, seed = 0) {
+    stopifnot(is.character(conditions) || is.numeric(n_resamples) || is.numeric(expected_min))
+    set.seed(seed)
+
+    n_conditions <- length(conditions)
+    groups_list <- split(seq_along(conditions), conditions)
+    resample_to <- Reduce(min, lapply(groups_list, length))
+    if (resample_to != expected_min) stop("unexpected minimum n trials")
+    
+    t(replicate(n_resamples, unlist(lapply(groups_list, resample, size = resample_to))))
+
+}
+
+resample_apply_combine <- function(
+    x, resample_idx,
+     apply_fun = identity, 
+     combine_fun = function(.x) Reduce("+", .x) / length(.x)
+     ) {
+    stopifnot(is.matrix(x) || is.matrix(resample_idx))
+
+    n_resamples <- nrow(resample_idx)
+    res <- vector("list", n_resamples)
+    for (ii in seq_len(n_resamples)) {
+        idx <- resample_idx[ii, ]
+        xii <- x[, idx, drop = FALSE]
+        res[[ii]] <- apply_fun(xii)
+    }
+
+    combine_fun(res)
+
+}
