@@ -65,8 +65,8 @@ input <- construct_filenames_gifti(subject = subjects, wave = waves, session = s
 
 ## execute ----
 
-
-l <- split(input, interaction(input$subject, input$wave, input$session, input$run))
+input[, g := paste0(subject, "__", wave, "__", session, "__", run)]
+l <- split(input, by = "g")
 
 cl <- makeCluster(n_core - 2, type = "FORK")
 registerDoParallel(cl)

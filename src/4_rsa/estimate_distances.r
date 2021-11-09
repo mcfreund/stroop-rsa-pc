@@ -63,6 +63,8 @@ rois <- names(atlas$roi)
 
 ## execute ----
 
+info_master[, g := paste0(subj, "__", wave, "__", session, "__", roi)]
+l <- split(info_master, by = "g")  ## NB: this calls split.data.table NOT split.data.frame! must use "by" arg.
 
 # l <- split(input, interaction(input$subject, input$wave, input$session, input$run))
 
