@@ -409,19 +409,20 @@ average <- function(mat, g) {
 }
 
 .cvdist <- function(x1, x2, m) {
-    D <- rowSums(tcrossprod(m, x1) * tcrossprod(m, x2))  ## means to scale by num verts
-    dim(D) <- sqrt(c(length(D), length(D)))
+    D <- rowMeans(tcrossprod(m, x1) * tcrossprod(m, x2))  ## means to scale by num verts
+    dim(D) <- sqrt(c(length(D), length(D)))  ## must be square in current implementation
     D
 }
 
-cvdist <- function(x1, x2, m, nms, center = FALSE) {
+cvdist <- function(x1, x2, m = mikeutils::contrast_matrix(ncol(x1)), nms = NULL, center = FALSE) {
+    if (all(dim(x1) != dim(x2))) stop("x1 and x2 must be same size")
     D <- .cvdist(x1, x2, m)
     attr(D, "x1_ssq") <- sqrt(colSums(x1^2))
     attr(D, "x2_ssq") <- sqrt(colSums(x2^2))
     attr(D, "x1_mu") <- colMeans(x1)
     attr(D, "x2_mu") <- colMeans(x2)
     attr(D, "n") <- nrow(x1)
-    dimnames(D) <- list(nms, nms)
+    if (!is.null(nms)) dimnames(D) <- list(nms, nms)
     D
 }
 
