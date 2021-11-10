@@ -36,29 +36,33 @@ task <- "Stroop"
 if (interactive()) { 
     glmname <- "lsall_1rpm"
     roiset <- "Schaefer2018Dev"
+    prewh <- "none"
+    measure <- "cveuc"  ## crcor
     subjects <- c("115825", "130518", "155938", "178647")
     #subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]]
-    sessions <- "reactive"
     waves <- c("wave1", "wave2")
-    prewh <- "none"
-    glm_i <- 1
+    sessions <- "proactive"
+    ii <- 1
 } else {
     args <- R.utils::commandArgs(trailingOnly = TRUE, asValues = TRUE)
     glmname <- args$glmname
     roiset <- args$roiset
     prewh <- args$prewh
+    measure <- args$measure
+    outfile_prefix <- args$outfile_prefix
     subjects <- fread(here(args$subjlist))[[1]]
     waves <- strsplit(args$waves, " ")[[1]]
     sessions <- strsplit(args$sessions, " ")[[1]]
-    if (length(glmname) != 1L || length(roiset) != 1L || length(prewh) != 1L) {
-        stop("not configured for multiple glms, roisets, or prewhs")
-    }
 }
 
-tinfo <- read_trialinfo()[subj %in% subjects & wave %in% waves & session %in% sessions]
-setkey(tinfo, subj, wave, session, run)  ## for quick subsetting within loop below
 atlas <- read_atlas(roiset)
 rois <- names(atlas$roi)
+filename_master <- here("out", "parcellated", "master.h5")
+info_master <- read_master(filename_master)[
+    prefix == "coefs" & glm %in% paste0("glm-", glmname) & roiset == roiset & prewh %in% prewh &
+    subj %in% subjects & wave %in% waves & session %in% sessions
+    ]
+
 
 
 ## execute ----
@@ -99,34 +103,31 @@ res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %d
 }
 stopImplicitCluster()
 
+
+## write arrays within hdf5 file
+
+fname <- construct_filename_rdm(measure = measure, glmname = glmname, roiset = roiset, prewh = prewh)
+
+if (!file.exists(fname)) h5createFile(fname)
+for (sub in subjects) {
     
-#     input_val <- l[[glm_i]]
-#     sub <- unique(input_val$subj)
-#     wav <- unique(input_val$wave)
-#     ses <- unique(input_val$session)
-#     run <- unique(input_val$run)
-#     run_i <- as.numeric(gsub("run", "", run))
-#     tlabels <- tinfo[.(sub, wav, ses, run_i), item]  ## get trialtypes
-    
-#     giftis <- lapply(input_val$filename, read_gifti)
-#     parcs <- 
-#         giftis %>%
-#         concat_hemis(input_val$hemi, pattern = "_Coef") %>% ## extract data and concatenate
-#         rename_dim(tlabels) %>%  ## add trialtypes to colnames
-#         parcellate_data(atlas) ## split matrix into list of length n_roi
-#     nms <- Map(
-#         function(x, y, ...) write_dset(mat = x, roi = y, ...), 
-#         parcs, names(parcs),
-#         dset_prefix = "coefs",
-#         subject = sub, wave = wav, session = ses, run = run, 
-#         roiset = roiset, glmname = glmname, prewh = prewh,
-#         write_colnames = TRUE
-#         )
+    for (wav in waves) {
 
-#     nms
+        for (ses in sessions) {
+            
+            nm <- paste0(sub, "__", wav, "__", ses)
+            #group_name <- paste0("/", nm)            
+            #if (!group_name %in% h5ls(fname)$group) h5createGroup(fname, group_name)
 
-# }
-# stopImplicitCluster()
+            ## extract data and concatenate into 3D array (RDM, roi)
+            dat <- res[grep(nm, names(res))]
+            dat <- abind(dat, rev.along = 0)
+            dimnames(dat)[[3]] <- gsub(paste0(nm, "__"), "", dimnames(dat)[[3]])
+            
+            h5write(dat, fname, nm)
+
+        }
+    }
+}
 
 
-# write_links(names_for_link)  ## update master.h5
