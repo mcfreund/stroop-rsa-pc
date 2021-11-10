@@ -66,11 +66,39 @@ rois <- names(atlas$roi)
 info_master[, g := paste0(subj, "__", wave, "__", session, "__", roi)]
 l <- split(info_master, by = "g")  ## NB: this calls split.data.table NOT split.data.frame! must use "by" arg.
 
-# l <- split(input, interaction(input$subject, input$wave, input$session, input$run))
+cl <- makeCluster(n_core - 2, type = "FORK")
+registerDoParallel(cl)
+res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %dopar% {
+    
+    input_val <- l[[ii]]
+    sub <- unique(input_val$subj)
+    wav <- unique(input_val$wave)
+    ses <- unique(input_val$session)
+    roi <- unique(input_val$roi)
 
-# cl <- makeCluster(n_core - 2, type = "FORK")
-# registerDoParallel(cl)
-# names_for_link <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
+    stopifnot(nrow(input_val) == 2)  ## one for each run
+    
+    B <- enlist(runs)
+    for (run_i in seq_along(runs)) {
+        Bi <- read_dset(filename_master, input_val[run == runs[run_i], name])
+        Bi_bar <- average(Bi, g = colnames(Bi))
+        colorder <- ttypes_by_run[[ses]][[run_i]]  ## paranoia, just to make sure all conditions orders are the same.
+        B[[run_i]] <- Bi_bar[, colorder]
+    }
+    
+    if (measure == "cveuc") {
+        
+        cvdist(B[[1]], B[[2]])  ## cross-validated euclidean distance
+
+    } else if (measure == "crcor") {
+        
+        crcor(B[[1]], B[[2]])  ## downsampled cross-run correlation
+    }
+
+
+}
+stopImplicitCluster()
+
     
 #     input_val <- l[[glm_i]]
 #     sub <- unique(input_val$subj)
