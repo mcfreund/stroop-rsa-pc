@@ -35,24 +35,24 @@ colors_bias <- c("blue", "red", "purple", "white")
 colors_pc50 <- c("black", "green", "pink", "yellow")
 words_bias <- toupper(colors_bias)
 words_pc50 <- toupper(colors_pc50)
-ttypes_bias <- apply(expand.grid(colors_bias, words_bias), 1, paste0, collapse = "_")
-ttypes_pc50 <- apply(expand.grid(colors_pc50, words_pc50), 1, paste0, collapse = "_")
-ttypes <- c(ttypes_bias, ttypes_pc50)
+ttypes_bias <- sort(apply(expand.grid(colors_bias, words_bias), 1, paste0, collapse = ""))
+ttypes_pc50 <- sort(apply(expand.grid(colors_pc50, words_pc50), 1, paste0, collapse = ""))
+ttypes <- sort(c(ttypes_bias, ttypes_pc50))
 ttypes_by_run <- list(
     baseline = 
         list(
-            run1 = fread(here("in", "ttypes_baseline_run1.txt"), header = FALSE)[[1]],
-            run2 = fread(here("in", "ttypes_baseline_run2.txt"), header = FALSE)[[1]]
+            run1 = sort(fread(here("in", "ttypes_baseline_run1.txt"), header = FALSE)[[1]]),
+            run2 = sort(fread(here("in", "ttypes_baseline_run2.txt"), header = FALSE)[[1]])
             ),
     proactive = 
         list(
-            run1 = fread(here("in", "ttypes_proactive_run1.txt"), header = FALSE)[[1]],
-            run2 = fread(here("in", "ttypes_proactive_run2.txt"), header = FALSE)[[1]]
+            run1 = sort(fread(here("in", "ttypes_proactive_run1.txt"), header = FALSE)[[1]]),
+            run2 = sort(fread(here("in", "ttypes_proactive_run2.txt"), header = FALSE)[[1]])
             ),
     reactive = 
         list(
-            run1 = fread(here("in", "ttypes_reactive.txt"), header = FALSE)[[1]],
-            run2 = fread(here("in", "ttypes_reactive.txt"), header = FALSE)[[1]]
+            run1 = sort(fread(here("in", "ttypes_reactive.txt"), header = FALSE)[[1]]),
+            run2 = sort(fread(here("in", "ttypes_reactive.txt"), header = FALSE)[[1]])
             )
 )
 n_ttype <- c(
@@ -164,6 +164,33 @@ read_atlas <- function(
     
 }
 
+## reading RSA models
+
+
+read_model_rdm <- function(cells = "all", session = NULL) {
+
+    target <- as.matrix(fread(here("in", "model_target.csv")))
+    distractor <- as.matrix(fread(here("in", "model_distractor.csv")))
+    incongruency <- as.matrix(fread(here("in", "model_incongruency.csv")))
+    rownames(target) <- colnames(target)
+    rownames(distractor) <- colnames(distractor)
+    rownames(incongruency) <- colnames(incongruency)
+
+    if (!is.null(session)) {
+        target <- target[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
+        distractor <- distractor[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
+        incongruency <- incongruency[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
+    }
+
+    if (cells == "all") {
+        list(target = target, distractor = distractor, incongruency = incongruency)
+    } else if (cells == "offdiag") {
+        cbind(target = offdiag(target), distractor = offdiag(distractor), incongruency = offdiag(incongruency))
+    } else if (cells == "lowertri") {
+        cbind(target = vec(target), distractor = vec(distractor), incongruency = vec(incongruency))
+    }
+
+}
 
 
 ## for interacting with gifti objects
@@ -372,8 +399,8 @@ construct_filename_datainfo <- function(
     paste0(
         base_dir, .Platform$file.sep, "datainfo-", prefix, "__subjlist-", subjlist, "__glm-", glmname,
         "__roiset-", roiset, "__prewh-", prewh, ".csv"
-            )
-    }
+    )
+}
 
 
 
@@ -531,6 +558,24 @@ cvdist <- function(x1, x2, m = mikeutils::contrast_matrix(ncol(x1)), nms = NULL,
     D
 }
 
+vec <- function(x) {
+    stopifnot(length(dim(x)) == 2)
+    x[lower.tri(x)]
+}
+offdiag <- function(x) {
+    stopifnot(length(dim(x)) == 2)
+    x[row(x) != col(x)]
+}
+
+
+indicator_matrix <- function(x) {
+    stopifnot(is.character(x))
+    X <- stats::model.matrix(~ as.factor(x) + 0)
+    colnames(X) <- gsub("^as\\.factor\\(x\\)", "", colnames(X))
+    attr(X, "assign") <- NULL
+    attr(X, "contrasts") <- NULL
+    X
+}
 
 
 ## resampling functions
