@@ -1,3 +1,8 @@
+## TODO
+## construct_filename
+## takes data_type:
+## gifti, parcellated coefs, rdm, weights...
+
 ## settings ----
 
 options(datatable.print.trunc.cols = TRUE, datatable.print.class = TRUE, datatable.print.nrows = 50)
@@ -263,19 +268,6 @@ construct_filenames_gifti <- function(
 
 }
 
-construct_filename_h5 <- function(
-    prefix, glmname, roiset, prewh,
-    base_dir = here::here("out"), 
-    suffix = ".h5"
-    ){
-    
-    arg <- as.list(environment())
-    if (any(vapply(arg, length, numeric(1)) > 1)) stop("not yet configured for length>1 args")
-
-    file.path(base_dir, paste0(prefix, "_glm-", glmname, "_roiset-", roiset, "_prewh-", prewh, suffix))
-
-}
-
 
 
 ## hdf5 interface functions
@@ -303,6 +295,24 @@ construct_filename_h5 <- function(
 ## read_dset() optionally reads colnames and adds as dimnames attribute to R matrix.
 ## read_dset() uses external links within the master file to access the file/dataset.
 
+# .construct_filename_rdm
+# .construct_filename_gifti
+# .construct_filename_coefs
+
+
+# .construct_dsetname_coefs
+# .construct_dsetname_rdm
+
+construct_filename_rdm <- function(
+    measure, glmname, roiset, prewh, 
+    base_dir = here::here("out", "res")
+    ){
+    paste0(
+        base_dir, .Platform$file.sep, "rdm-", measure, "__glm-", glmname, "__roiset-", roiset, "__prewh-", prewh, ".h5"
+        )
+}
+
+
 
 construct_filename_h5 <- function(
     subject, wave, session, run, roiset, roi, 
@@ -322,25 +332,32 @@ construct_dsetname_h5 <- function(
 }
 
 
+.write_dset_dimnames <- function(file_name, dset_name, idx) {
+    fid <- rhdf5::H5Fopen(file_name)
+    did <- rhdf5::H5Dopen(fid, dset_name)
+    rhdf5::h5writeAttribute(dimnames(mat)[[idx]], did, switch(idx, "rownames", "colnames"))
+    rhdf5::H5Dclose(did)
+    rhdf5::H5Fclose(fid)
+}
+
 write_dset <- function(
     mat, dset_prefix, 
     subject, wave, session, run, roiset, roi, 
     glmname, prewh,
     base_dir = here::here("out", "parcellated", ".d"),
-    write_colnames = FALSE
+    write_colnames = FALSE,
+    write_rownames = FALSE
     ) {
     file_name <- construct_filename_h5(subject, wave, session, run, roiset, roi, base_dir)
     dset_name <- construct_dsetname_h5(dset_prefix, subject, wave, session, run, roiset, roi, glmname, prewh, base_dir)
     rhdf5::h5write(mat, file = file_name, name = dset_name)
-    if (write_colnames) {
-        fid <- rhdf5::H5Fopen(file_name)
-        did <- rhdf5::H5Dopen(fid, dset_name)
-        rhdf5::h5writeAttribute(colnames(mat), did, "colnames")
-        rhdf5::H5Dclose(did)
-        rhdf5::H5Fclose(fid)
-    }
+    if (write_rownames) .write_dset_dimnames(file_name, dset_name, 1)
+    if (write_colnames) .write_dset_dimnames(file_name, dset_name, 2)
     c(file_name = file_name, dset_name = dset_name)
 }
+
+
+
 
 write_links <- function(names_list, base_dir = here::here("out", "parcellated")){
     master_file <- paste0(base_dir, .Platform$file.sep, "master.h5")
