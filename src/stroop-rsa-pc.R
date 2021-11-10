@@ -33,7 +33,28 @@ words_pc50 <- toupper(colors_pc50)
 ttypes_bias <- apply(expand.grid(colors_bias, words_bias), 1, paste0, collapse = "_")
 ttypes_pc50 <- apply(expand.grid(colors_pc50, words_pc50), 1, paste0, collapse = "_")
 ttypes <- c(ttypes_bias, ttypes_pc50)
-
+ttypes_by_run <- list(
+    baseline = 
+        list(
+            run1 = fread(here("in", "ttypes_baseline_run1.txt"), header = FALSE)[[1]],
+            run2 = fread(here("in", "ttypes_baseline_run2.txt"), header = FALSE)[[1]]
+            ),
+    proactive = 
+        list(
+            run1 = fread(here("in", "ttypes_proactive_run1.txt"), header = FALSE)[[1]],
+            run2 = fread(here("in", "ttypes_proactive_run2.txt"), header = FALSE)[[1]]
+            ),
+    reactive = 
+        list(
+            run1 = fread(here("in", "ttypes_reactive.txt"), header = FALSE)[[1]],
+            run2 = fread(here("in", "ttypes_reactive.txt"), header = FALSE)[[1]]
+            )
+)
+n_ttype <- c(
+    baseline = 20,
+    proactive = 26,
+    reactive = 26
+    )  ## unique ttypes PER RUN!! (gives maximum dimension of cross-run/cross-validated RDMs)
 n_vertex <- 20484  ## surface hcp mesh fslr5
 n_tr <- c(
   baseline  = 540,
