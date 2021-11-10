@@ -411,6 +411,42 @@ read_dset <- function(filename_master, dset_name, read_colnames = TRUE) {
 }
 
 
+read_rdms <- function(
+    .measure, .glmname, .roiset, .prewh, .subjects, .session, .waves,
+    .ttypes1 = ttypes_by_run[[.session]]$run1, 
+    .ttypes2 = ttypes_by_run[[.session]]$run2, 
+    .atlas = atlas
+    ) {
+    stopifnot(length(.ttypes1) == length(.ttypes2))
+    on.exit(rhdf5::h5closeAll())
+
+    n_ttype <- length(.ttypes1)
+    n_sub <- length(.subjects)
+    n_wav <- length(.waves)
+    n_roi <- length(.atlas$rois)
+
+    A <- array(
+        NA, 
+        dim = c(n_ttype, n_ttype, n_roi, n_sub, n_wav),
+        dimnames = list(dim1 = .ttypes1, dim2 = .ttypes2, roi = .atlas$rois, subject = .subjects, wave = .waves)
+        )
+    
+    fname <- construct_filename_rdm(measure = .measure, glmname = .glmname, roiset = .roiset, prewh = .prewh)
+    fid <- rhdf5::H5Fopen(fname)
+    for (.subject in .subjects) {
+        for (.wave in .waves) {
+            dset_name <- paste0(.subject, "__", .wave, "__", .session)
+            did <- rhdf5::H5Dopen(fid, dset_name)
+            A[, , , .subject, .wave] <- rhdf5::H5Dread(did)
+            rhdf5::H5Dclose(did)
+        }
+    }
+    
+
+    A
+
+}
+
 
 ## math/stats functions
 
