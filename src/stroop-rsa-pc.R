@@ -270,6 +270,7 @@ construct_filenames_gifti <- function(
 
 
 
+
 ## hdf5 interface functions
 
 ## reading/writing parcellated data files (matrices built from segmented gifti images).
@@ -332,7 +333,7 @@ construct_dsetname_h5 <- function(
 }
 
 
-.write_dset_dimnames <- function(file_name, dset_name, idx) {
+.write_dset_dimnames <- function(mat, file_name, dset_name, idx) {
     fid <- rhdf5::H5Fopen(file_name)
     did <- rhdf5::H5Dopen(fid, dset_name)
     rhdf5::h5writeAttribute(dimnames(mat)[[idx]], did, switch(idx, "rownames", "colnames"))
@@ -341,9 +342,7 @@ construct_dsetname_h5 <- function(
 }
 
 write_dset <- function(
-    mat, dset_prefix, 
-    subject, wave, session, run, roiset, roi, 
-    glmname, prewh,
+    mat, dset_prefix, subject, wave, session, run, roiset, roi, glmname, prewh,
     base_dir = here::here("out", "parcellated", ".d"),
     write_colnames = FALSE,
     write_rownames = FALSE
@@ -351,49 +350,102 @@ write_dset <- function(
     file_name <- construct_filename_h5(subject, wave, session, run, roiset, roi, base_dir)
     dset_name <- construct_dsetname_h5(dset_prefix, subject, wave, session, run, roiset, roi, glmname, prewh, base_dir)
     rhdf5::h5write(mat, file = file_name, name = dset_name)
-    if (write_rownames) .write_dset_dimnames(file_name, dset_name, 1)
-    if (write_colnames) .write_dset_dimnames(file_name, dset_name, 2)
+    if (write_rownames) .write_dset_dimnames(mat, file_name, dset_name, 1)
+    if (write_colnames) .write_dset_dimnames(mat, file_name, dset_name, 2)
     c(file_name = file_name, dset_name = dset_name)
 }
 
+construct_filenames_h5 <- function(
+    prefix, subjects, waves, sessions, rois, runs, glmname, prewh
+    ){    
+    input <- expand.grid(subj = subjects, wave = waves, session = sessions, roi = rois, run = runs)
+    setDT(input)
+    input[, file_name := construct_filename_h5(subj, wave, session, run, roiset, roi)]
+    input[, dset_name := construct_dsetname_h5(prefix, subj, wave, session, run, roiset, roi, glmname, prewh)]
+    input
+}
 
 
-
-write_links <- function(names_list, base_dir = here::here("out", "parcellated")){
-    master_file <- paste0(base_dir, .Platform$file.sep, "master.h5")
-    is_new_file <- !file.exists(master_file)
-    if (is_new_file) {
-        fid <- rhdf5::H5Fcreate(master_file)
-    } else {
-          ## for checking whether dset_name already exists in master file:
-        info <- rhdf5::h5ls(master_file)  ## do this before opening file so not throw "closeAll()" warning
-        fid <- rhdf5::H5Fopen(master_file)
-    }
-    ## loop through files, creating a link to the dataset in each one:
-    for(f_i in seq_along(names_list)) {
-        f <- names_list[[f_i]]["file_name"]
-        dset_name <- names_list[[f_i]]["dset_name"]
-        ## skip so not attempt to overwrite (will throw error: HDF5. Links. Unable to initialize object.):
-        if (!is_new_file) if (dset_name %in% info$name) next  ## but only if master.h5 was already existing.
-        rhdf5::H5Lcreate_external(
-            target_file_name = f, 
-            target_obj_name = dset_name,
-            link_loc = fid,
-            link_name = dset_name
+construct_filename_datainfo <- function(
+    prefix, subjlist, glmname, roiset, prewh, base_dir = here::here("out", "parcellated")
+    ) {
+    paste0(
+        base_dir, .Platform$file.sep, "datainfo-", prefix, "__subjlist-", subjlist, "__glm-", glmname,
+        "__roiset-", roiset, "__prewh-", prewh, ".csv"
             )
     }
-    rhdf5::H5Fclose(fid)
-}
 
-read_master <- function(file_name = here("out", "parcellated", "master.h5")) {
-    d <- h5ls(file_name)
-    setDT(d)
-    tidyr::separate(
-        d, name, 
-        into = c("prefix", "subj", "wave", "session", "run", "roiset", "roi", "glm", "prewh"), 
-        sep = "__", remove = FALSE
-        )
-}
+
+
+# write_links <- function(names_list, base_dir = here::here("out", "parcellated")){
+#     on.exit(rhdf5::h5closeAll())
+#     master_file <- paste0(base_dir, .Platform$file.sep, "master.h5")
+#     is_new_file <- !file.exists(master_file)
+#     if (is_new_file) {
+#         fid <- rhdf5::H5Fcreate(master_file)
+#     } else {
+#           ## for checking whether dset_name already exists in master file:
+#         info <- rhdf5::h5ls(master_file)  ## do this before opening file so not throw "closeAll()" warning
+#         fid <- rhdf5::H5Fopen(master_file)
+#     }
+#     ## loop through files, creating a link to the dataset in each one:
+#     for(f_i in seq_along(names_list)) {
+#         f <- names_list[[f_i]]["file_name"]
+#         dset_name <- names_list[[f_i]]["dset_name"]
+#         ## skip so not attempt to overwrite (will throw error: HDF5. Links. Unable to initialize object.):
+#         if (!is_new_file) if (dset_name %in% info$name) next  ## but only if master.h5 was already existing.
+#         rhdf5::H5Lcreate_external(
+#             target_file_name = f, 
+#             target_obj_name = dset_name,
+#             link_loc = fid,
+#             link_name = dset_name
+#             )
+#     }
+#     rhdf5::H5Fclose(fid)
+# }
+
+
+# write_links_all <- function(base_dir = here::here("out", "parcellated")){
+#     on.exit(rhdf5::h5closeAll())
+#     master_file <- paste0(base_dir, .Platform$file.sep, "master.h5")
+#     if (!file.exists(master_file)) stop("master file exists.")
+
+#     ## loop through files, creating a link to the dataset in each one:
+
+#     files <- list.files(file.path(base_dir, ".d"), full.names = TRUE)
+#     for(f_i in seq_along(files)) {
+#         f_i = 1
+#         f <- files[[f_i]]
+#         f_info <- h5ls(f)
+
+#         for (dset_i in seq_len(nrow(f_info))) {
+#             dset_name <- f_info[dset_i, ]$name
+#             fid <- rhdf5::H5Fopen(master_file)
+
+#             rhdf5::H5Lcreate_external(
+#                 target_file_name = f, 
+#                 target_obj_name = dset_name,
+#                 link_loc = fid,
+#                 link_name = dset_name
+#                 )
+#             rhdf5::H5Fclose(fid)
+            
+#         }
+        
+#     }
+
+# }
+
+
+# read_master <- function(file_name = here("out", "parcellated", "master.h5")) {
+#     d <- h5ls(file_name)
+#     setDT(d)
+#     tidyr::separate(
+#         d, name, 
+#         into = c("prefix", "subj", "wave", "session", "run", "roiset", "roi", "glm", "prewh"), 
+#         sep = "__", remove = FALSE
+#         )
+# }
 
 parse_dset_name <- function(
     x, nms = c("prefix", "subj", "wave", "session", "run", "roiset", "roi", "glm", "prewh")
@@ -401,8 +453,8 @@ parse_dset_name <- function(
     tidyr::separate(x, name, nms, sep = "__")
 }
 
-read_dset <- function(filename_master, dset_name, read_colnames = TRUE) {
-    mat <- rhdf5::h5read(filename_master, dset_name, read.attributes = TRUE)
+read_dset <- function(file_name, dset_name, read_colnames = TRUE) {
+    mat <- rhdf5::h5read(file_name, dset_name, read.attributes = TRUE)
     if (read_colnames) {
         colnames(mat) <- attr(mat, "colnames")
         attr(mat, "colnames") <- NULL
@@ -415,7 +467,7 @@ read_rdms <- function(
     .measure, .glmname, .roiset, .prewh, .subjects, .session, .waves,
     .ttypes1 = ttypes_by_run[[.session]]$run1, 
     .ttypes2 = ttypes_by_run[[.session]]$run2, 
-    .atlas = atlas
+    .rois = names(atlas$rois)
     ) {
     stopifnot(length(.ttypes1) == length(.ttypes2))
     on.exit(rhdf5::h5closeAll())
@@ -423,12 +475,12 @@ read_rdms <- function(
     n_ttype <- length(.ttypes1)
     n_sub <- length(.subjects)
     n_wav <- length(.waves)
-    n_roi <- length(.atlas$rois)
+    n_roi <- length(.rois)
 
     A <- array(
         NA, 
         dim = c(n_ttype, n_ttype, n_roi, n_sub, n_wav),
-        dimnames = list(dim1 = .ttypes1, dim2 = .ttypes2, roi = .atlas$rois, subject = .subjects, wave = .waves)
+        dimnames = list(dim1 = .ttypes1, dim2 = .ttypes2, roi = .rois, subject = .subjects, wave = .waves)
         )
     
     fname <- construct_filename_rdm(measure = .measure, glmname = .glmname, roiset = .roiset, prewh = .prewh)
