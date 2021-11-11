@@ -40,21 +40,15 @@ if (interactive()) {
     glmname <- "lsall_1rpm"
     roiset <- "Schaefer2018Dev"
     prewh <- "obsall"  ## obsresamp, obsall
-    subjects <- c("115825", "130518", "155938", "178647")
     subjlist <- "ispc_retest"
-    subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]]
+    subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
     waves <- c("wave1", "wave2")
     sessions <- "reactive"
-    ii <- 1
+    n_cores <- 10
+    ii <- 1606
 } else {
-    args <- R.utils::commandArgs(trailingOnly = TRUE, asValues = TRUE)
-    glmname <- args$glmname
-    roiset <- args$roiset
-    prewh <- args$prewh
-    subjects <- fread(here("out", paste0("subjlist_", args$subjlist, ".txt")))[[1]]
-    waves <- strsplit(args$waves, " ")[[1]]
-    sessions <- strsplit(args$sessions, " ")[[1]]
-    n_cores <- args$n_cores
+    source(here("src", "parse_args.r"))
+    print(args)
 }
 
 atlas <- read_atlas(roiset)
@@ -66,7 +60,7 @@ rois <- names(atlas$roi)
 
 input <- construct_filenames_h5(
     prefix = "coefs", subjects = subjects, waves = waves, sessions = sessions, rois = rois, runs = runs, 
-    glmname = glmname, prewh = prewh
+    glmname = glmname, prewh = "none"
 )
 
 cl <- makeCluster(n_cores, type = "FORK")

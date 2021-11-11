@@ -37,32 +37,23 @@ source(here("src", "stroop-rsa-pc.R"))
 
 task <- "Stroop"
 
-if (interactive()) { 
+if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
     roiset <- "Schaefer2018Dev"
-    subjects <- c("115825", "130518", "155938", "178647")
-    #subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]]
+    subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
     sessions <- "reactive"
     waves <- c("wave1", "wave2")
     glm_i <- 1
     n_cores <- 10
 } else {
-    args <- R.utils::commandArgs(trailingOnly = TRUE, asValues = TRUE)
-    glmname <- args$glmname
-    roiset <- args$roiset
-    subjlist <- args$subjlist
-    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
-    waves <- strsplit(args$waves, " ")[[1]]
-    sessions <- strsplit(args$sessions, " ")[[1]]
-    if (length(glmname) != 1L || length(roiset) != 1L) stop("not configured for multiple glms or roisets")
-    n_cores <- args$n_cores
+    source(here("src", "parse_args.r"))
+    print(args)
 }
 
 tinfo <- read_trialinfo()[subj %in% subjects & wave %in% waves & session %in% sessions]
 setkey(tinfo, subj, wave, session, run)  ## for quick subsetting within loop below
 atlas <- read_atlas(roiset)
 rois <- names(atlas$roi)
-
 
 ## execute ----
 

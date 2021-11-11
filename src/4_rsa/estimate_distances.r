@@ -33,58 +33,47 @@ source(here("src", "stroop-rsa-pc.R"))
 
 task <- "Stroop"
 
-if (interactive()) { 
+if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
     roiset <- "Schaefer2018Dev"
     prewh <- "none"
     measure <- "cveuc"  ## crcor
-    subjects <- c("115825", "130518", "155938", "178647")
-    #subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]]
+    subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
     waves <- c("wave1", "wave2")
-    sessions <- "proactive"
+    sessions <- "reactive"
     ii <- 1
+    n_cores <- 10
+    run_i <- 1
 } else {
-    args <- R.utils::commandArgs(trailingOnly = TRUE, asValues = TRUE)
-    glmname <- args$glmname
-    roiset <- args$roiset
-    prewh <- args$prewh
-    measure <- args$measure
-    outfile_prefix <- args$outfile_prefix
-    subjects <- fread(here(args$subjlist))[[1]]
-    waves <- strsplit(args$waves, " ")[[1]]
-    sessions <- strsplit(args$sessions, " ")[[1]]
+    source(here("src", "parse_args.r"))
+    print(args)
 }
 
 atlas <- read_atlas(roiset)
 rois <- names(atlas$roi)
-filename_master <- here("out", "parcellated", "master.h5")
-info_master <- read_master(filename_master)[
-    prefix == "coefs" & glm %in% paste0("glm-", glmname) & roiset == roiset & prewh %in% prewh &
-    subj %in% subjects & wave %in% waves & session %in% sessions
-    ]
 
 
 
 ## execute ----
 
-info_master[, g := paste0(subj, "__", wave, "__", session, "__", roi)]
-l <- split(info_master, by = "g")  ## NB: this calls split.data.table NOT split.data.frame! must use "by" arg.
 
-cl <- makeCluster(n_core - 2, type = "FORK")
+input <- construct_filenames_h5(
+    prefix = "coefs", subjects = subjects, waves = waves, sessions = sessions, rois = rois, runs = runs, 
+    glmname = glmname, prewh = prewh
+)
+input[, g := paste0(subj, "__", wave, "__", session, "__", roi)]
+l <- split(input, by = "g")
+
+cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
 res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %dopar% {
     
     input_val <- l[[ii]]
-    sub <- unique(input_val$subj)
-    wav <- unique(input_val$wave)
     ses <- unique(input_val$session)
-    roi <- unique(input_val$roi)
 
-    stopifnot(nrow(input_val) == 2)  ## one for each run
-    
     B <- enlist(runs)
     for (run_i in seq_along(runs)) {
-        Bi <- read_dset(filename_master, input_val[run == runs[run_i], name])
+        Bi <- read_dset(input_val[run == runs[run_i], file_name], input_val[run == runs[run_i], dset_name])
         Bi_bar <- average(Bi, g = colnames(Bi))
         colorder <- ttypes_by_run[[ses]][[run_i]]  ## paranoia, just to make sure all conditions orders are the same.
         B[[run_i]] <- Bi_bar[, colorder]
@@ -129,5 +118,4 @@ for (sub in subjects) {
         }
     }
 }
-
 
