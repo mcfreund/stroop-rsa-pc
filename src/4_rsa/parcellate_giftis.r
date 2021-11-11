@@ -35,7 +35,6 @@ source(here("src", "stroop-rsa-pc.R"))
 
 ## set variables
 
-prewh <- "none"
 task <- "Stroop"
 
 if (interactive()) { 
@@ -46,31 +45,35 @@ if (interactive()) {
     sessions <- "reactive"
     waves <- c("wave1", "wave2")
     glm_i <- 1
+    n_cores <- 10
 } else {
     args <- R.utils::commandArgs(trailingOnly = TRUE, asValues = TRUE)
     glmname <- args$glmname
     roiset <- args$roiset
-    subjects <- fread(here(args$subjlist))[[1]]
+    subjlist <- args$subjlist
+    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
     waves <- strsplit(args$waves, " ")[[1]]
     sessions <- strsplit(args$sessions, " ")[[1]]
     if (length(glmname) != 1L || length(roiset) != 1L) stop("not configured for multiple glms or roisets")
+    n_cores <- args$n_cores
 }
 
 tinfo <- read_trialinfo()[subj %in% subjects & wave %in% waves & session %in% sessions]
 setkey(tinfo, subj, wave, session, run)  ## for quick subsetting within loop below
 atlas <- read_atlas(roiset)
 rois <- names(atlas$roi)
-input <- construct_filenames_gifti(subject = subjects, wave = waves, session = sessions, run = runs, glmname = glmname)
 
 
 ## execute ----
 
+input <- construct_filenames_gifti(subject = subjects, wave = waves, session = sessions, run = runs, glmname = glmname)
 input[, g := paste0(subject, "__", wave, "__", session, "__", run)]
 l <- split(input, by = "g")
 
-cl <- makeCluster(n_core - 2, type = "FORK")
+cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
-names_for_link <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
+res <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
+#for (glm_i in seq_along(l)) {
     
     input_val <- l[[glm_i]]
     sub <- unique(input_val$subj)
@@ -91,7 +94,7 @@ names_for_link <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c"
         parcs, names(parcs),
         dset_prefix = "coefs",
         subject = sub, wave = wav, session = ses, run = run, 
-        roiset = roiset, glmname = glmname, prewh = prewh,
+        roiset = roiset, glmname = glmname, prewh = "none",
         write_colnames = TRUE
         )
 
@@ -100,5 +103,8 @@ names_for_link <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c"
 }
 stopImplicitCluster()
 
-
-write_links(names_for_link)  ## update master.h5
+data_info <- as.data.table(do.call(rbind, res))
+fn <- construct_filename_datainfo(
+        prefix = "coefs", subjlist = subjlist, glmname = glmname, roiset = roiset, prewh = "none"
+        )
+fwrite(data_info, fn)
