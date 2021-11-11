@@ -385,7 +385,10 @@ write_dset <- function(
 construct_filenames_h5 <- function(
     prefix, subjects, waves, sessions, rois, runs, glmname, prewh
     ){    
-    input <- expand.grid(subj = subjects, wave = waves, session = sessions, roi = rois, run = runs)
+    input <- expand.grid(
+        subj = subjects, wave = waves, session = sessions, roi = rois, run = runs, 
+        stringsAsFactors = FALSE
+        )
     setDT(input)
     input[, file_name := construct_filename_h5(subj, wave, session, run, roiset, roi)]
     input[, dset_name := construct_dsetname_h5(prefix, subj, wave, session, run, roiset, roi, glmname, prewh)]
@@ -480,6 +483,7 @@ cvdist <- function(x1, x2, m = mikeutils::contrast_matrix(ncol(x1)), nms = NULL,
     D <- .cvdist(x1, x2, m)
     attr(D, "x1_ssq") <- sqrt(colSums(x1^2))
     attr(D, "x2_ssq") <- sqrt(colSums(x2^2))
+    attr(D, "cv_sq") <- colSums(x1 * x2)
     attr(D, "x1_mu") <- colMeans(x1)
     attr(D, "x2_mu") <- colMeans(x2)
     attr(D, "n") <- nrow(x1)
