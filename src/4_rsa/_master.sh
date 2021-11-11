@@ -12,8 +12,8 @@ sessions="reactive"
 glmname="lsall_1rpm"
 roiset="Schaefer2018Dev"
 prewhs="obsall"  ## which prewhitening methods to use (does not include "none")
-measure="cveuc"
-#measure=("cveuc|crcor")
+measures="cveuc"
+#measures=("cveuc|crcor")
 
 ## 1. parcellate giftis
 
@@ -27,7 +27,7 @@ Rscript ./src/4_rsa/parcellate_giftis.r \
 
 ## 2. prewhiten coefs
 
-for prewh in $prewhs
+for prewh in ${prewhs[@]}
 do
     Rscript ./src/4_rsa/prewhiten_coefs.r \
         --glmname $glmname \
@@ -41,32 +41,32 @@ done
 
 ## 3-4 estimate distances, regress distances
 
-prews_andnone=("none" ${prewhs[@]})
-for measure in $measures
+prewhs_none=("none" ${prewhs[@]})
+for measure in ${measures[@]}
 do
-    for prewh in $prews_andnone
+    for prewh in ${prewhs_none[@]}
     do
-        Rscript ./src/4_rsa/estimate_distances.r \
-            --glmname $glmname \
-            --roiset $roiset \
-            --subjlist $subjlist \
-            --waves $waves \
-            --sessions $sessions
-            --prewh $prew \
-            --measure $measure
-
-        # Rscript ./src/4_rsa/regress_distances.r \
+        # Rscript ./src/4_rsa/estimate_distances.r \
         #     --glmname $glmname \
         #     --roiset $roiset \
         #     --subjlist $subjlist \
         #     --waves $waves \
-        #     --sessions $sessions
-        #     --prewh $prew \
-        #     --measure $measure
+        #     --sessions $sessions \
+        #     --prewh $prewh \
+        #     --measure $measure \
+        #     --n_cores 26
+
+        Rscript ./src/4_rsa/regress_distances.r \
+            --glmname $glmname \
+            --roiset $roiset \
+            --subjlist $subjlist \
+            --waves $waves \
+            --sessions $sessions \
+            --prewh $prewh \
+            --measure $measure
 
     done
 done
-
 
 
 
