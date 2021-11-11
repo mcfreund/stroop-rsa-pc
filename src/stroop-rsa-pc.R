@@ -240,7 +240,7 @@ construct_filename_gifti <- function(
     task = "Stroop", 
     base_dir = here::here("out", "glms"), 
     prefix = "STATS", 
-    suffix = "REML.func.gii"
+    suffix = "_REML.func.gii"
     ){
     
     arg <- as.list(environment())
@@ -248,7 +248,7 @@ construct_filename_gifti <- function(
 
     file.path(
         base_dir, subject, wave, "RESULTS", task, paste0(session, "_", glmname),
-        paste0(prefix, "_", subject, "_", run, "_", hemi, "_", suffix)
+        paste0(prefix, "_", subject, "_", run, "_", hemi, suffix)
         )
 }
 
@@ -260,7 +260,7 @@ construct_filenames_gifti <- function(
     task = "Stroop", 
     base_dir = here::here("out", "glms"), 
     prefix = "STATS", 
-    suffix = "REML.func.gii",
+    suffix = "_REML.func.gii",
     returnDT = TRUE
     ){
     
