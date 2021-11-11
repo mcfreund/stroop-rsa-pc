@@ -38,9 +38,10 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
     roiset <- "Schaefer2018Dev"
     prewh <- "none"
     measure <- "cveuc"  ## "crcor"
-    subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
+    subjlist <- "ispc_retest"
+    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]][1:5]
     waves <- c("wave1", "wave2")
-    session <- "reactive"
+    sessions <- "reactive"
     subject = subjects[1]
     wave = waves[1]
 } else {
@@ -48,6 +49,10 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
     print(args)
 }
 
+if (length(sessions) > 1) stop("sessions must be length 1")
+
+
+ttypes_use <- intersect(ttypes_by_run$reactive$run1, ttypes_bias)
 atlas <- read_atlas(roiset)
 rois <- names(atlas$roi)
 
@@ -63,26 +68,26 @@ tidy_model <- function(B, models, outcomes) {
 ## loop over sess, measure, prew, ...
 
 if (measure == "cveuc") {
-    X <- cbind(x0 = 1, read_model_rdm(cells = "lowertri", session = session))
+    X_list <- read_model_rdm(cells = "all", session = sessions)
+    X_list <- lapply(X_list, "[", i = ttypes_use, j = ttypes_use)
+    X <- do.call(cbind, lapply(X_list, vec))
+    X <- cbind(intercept = 1, X)
+    #X <- cbind(intercept = 1, read_model_rdm(cells = "lowertri", session = sessions))
 } else if (measure == "crcor") {
     stop("not configured yet")
 }
 
 D <- read_rdms(
-    .measure = measure, .glmname = glmname, .roiset = roiset, .prewh = "none", 
-    .subjects = subjects, .session = session, .waves = waves
-    )
-D1 <- read_rdms(
-    .measure = measure, .glmname = glmname, .roiset = roiset, .prewh = "obsall", 
-    .subjects = subjects, .session = session, .waves = waves
+    .measure = measure, .glmname = glmname, .roiset = roiset, .prewh = prewh, 
+    .subjects = subjects, .session = sessions, .waves = waves
     )
 
 
 res <- enlist(combo_paste(subjects, waves, sep = "_"))
 for (subject_i in seq_along(subjects)) {
     for (wave_i in seq_along(waves)) {
-
-        Di <- D[, , , subject_i, wave_i]
+        
+        Di <- D[ttypes_use, ttypes_use, , subject_i, wave_i]
         
         ## preproc:
         if (measure == "cveuc") {
@@ -107,5 +112,5 @@ for (subject_i in seq_along(subjects)) {
 data <- rbindlist(res, idcol = "subject_wave")
 data <- separate(data, subject_wave, into = c("subject", "wave"))
 
-fout <- paste0("weights__glm-", glmname, "__roiset-", roiset, "__prewh-", prewh, ".csv")
+fout <- paste0("weights__subjlist-", subjlist, "__glm-", glmname, "__roiset-", roiset, "__prewh-", prewh, ".csv")
 fwrite(data, here("out", "res", fout))
