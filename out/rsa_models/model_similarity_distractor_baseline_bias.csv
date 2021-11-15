@@ -1,0 +1,11 @@
+run1,blueBLUE,bluePURPLE,blueRED,purplePURPLE,purpleRED,purpleWHITE,redRED,redWHITE,whiteBLUE,whiteWHITE
+blueBLUE,1,0,0,0,0,0,0,0,1,0
+blueWHITE,0,0,0,0,0,1,0,1,0,1
+purpleBLUE,1,0,0,0,0,0,0,0,1,0
+purplePURPLE,0,1,0,1,0,0,0,0,0,0
+redBLUE,1,0,0,0,0,0,0,0,1,0
+redPURPLE,0,1,0,1,0,0,0,0,0,0
+redRED,0,0,1,0,1,0,1,0,0,0
+whitePURPLE,0,1,0,1,0,0,0,0,0,0
+whiteRED,0,0,1,0,1,0,1,0,0,0
+whiteWHITE,0,0,0,0,0,1,0,1,0,1
