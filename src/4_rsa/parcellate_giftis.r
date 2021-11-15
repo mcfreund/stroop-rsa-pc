@@ -40,7 +40,8 @@ task <- "Stroop"
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
     roiset <- "Schaefer2018Dev"
-    subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
+    subjlist <- "ispc_retest"
+    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]][1:5]
     sessions <- "reactive"
     waves <- c("wave1", "wave2")
     glm_i <- 1
@@ -50,14 +51,25 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
     print(args)
 }
 
+if (glmname == "lssep_1rpm") {
+    suffix <- ".gii"
+    pattern <- NULL
+} else if (glmname == "lsall_1rpm") {
+    suffix <- "_REML.func.gii"
+    pattern <- "_Coef"
+}
 tinfo <- read_trialinfo()[subj %in% subjects & wave %in% waves & session %in% sessions]
 setkey(tinfo, subj, wave, session, run)  ## for quick subsetting within loop below
 atlas <- read_atlas(roiset)
 rois <- names(atlas$roi)
 
+
 ## execute ----
 
-input <- construct_filenames_gifti(subject = subjects, wave = waves, session = sessions, run = runs, glmname = glmname)
+input <- construct_filenames_gifti(
+    subject = subjects, wave = waves, session = sessions, run = runs, glmname = glmname,
+    suffix = suffix
+    )
 input[, g := paste0(subject, "__", wave, "__", session, "__", run)]
 l <- split(input, by = "g")
 
@@ -77,7 +89,7 @@ res <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
     giftis <- lapply(input_val$filename, read_gifti)
     parcs <- 
         giftis %>%
-        concat_hemis(input_val$hemi, pattern = "_Coef") %>% ## extract data and concatenate
+        concat_hemis(input_val$hemi, pattern = pattern) %>% ## extract data and concatenate
         rename_dim(tlabels) %>%  ## add trialtypes to colnames
         parcellate_data(atlas) ## split matrix into list of length n_roi
     nms <- Map(

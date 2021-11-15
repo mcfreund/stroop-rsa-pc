@@ -10,3 +10,4 @@ subjects <- data.table::fread(here("out", paste0("subjlist_", subjlist, ".txt"))
 if ("n_cores" %in% names(args)) n_cores <- as.numeric(args$n_cores)  ## optional arg that needs coersion
 if ("prewh" %in% names(args)) prewh <- args$prewh
 if ("measure" %in% names(args)) measure <- args$measure
+if ("ttype_subset" %in% names(args)) ttype_subset <- args$ttype_subset

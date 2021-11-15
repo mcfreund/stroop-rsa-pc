@@ -35,9 +35,14 @@ colors_bias <- c("blue", "red", "purple", "white")
 colors_pc50 <- c("black", "green", "pink", "yellow")
 words_bias <- toupper(colors_bias)
 words_pc50 <- toupper(colors_pc50)
-ttypes_bias <- sort(apply(expand.grid(colors_bias, words_bias), 1, paste0, collapse = ""))
-ttypes_pc50 <- sort(apply(expand.grid(colors_pc50, words_pc50), 1, paste0, collapse = ""))
-ttypes <- sort(c(ttypes_bias, ttypes_pc50))
+ttypes <- list(
+    bias = sort(apply(expand.grid(colors_bias, words_bias), 1, paste0, collapse = "")),
+    pc50 = sort(apply(expand.grid(colors_pc50, words_pc50), 1, paste0, collapse = ""))
+)
+ttypes$all <- sort(c(ttypes$bias, ttypes$pc50))
+#ttypes_bias <- sort(apply(expand.grid(colors_bias, words_bias), 1, paste0, collapse = ""))
+#ttypes_pc50 <- sort(apply(expand.grid(colors_pc50, words_pc50), 1, paste0, collapse = ""))
+#ttypes <- sort(c(ttypes_bias, ttypes_pc50))
 ttypes_by_run <- list(
     baseline = 
         list(
@@ -73,6 +78,10 @@ n_trial <- c(
   )  ## number of trials (events) per subj*run for stroop task
 n_run <- 2
 n_session <- 3
+models <- list(
+    cveuc = c("distractor", "incongruency", "target"),
+    crcor = c("conjunction", "distractor", "incongruency", "target")
+)
 
 ## :: analytic info (expected values)
 
@@ -105,6 +114,102 @@ enlist <- function(nms) setNames(vector("list", length(nms)), nms)
 #   apply(do.call(rbind, x), 2, as.list)  ## stack and reslice
 # }
 
+
+## math/stats functions
+
+center <- function(x) {
+    stopifnot(length(dim(x)) == 2)
+    x - rep(colMeans(x), rep.int(nrow(x), ncol(x)))
+}
+
+scale2unit <- function(x) {
+    stopifnot(is.matrix(x) || is.vector(x))
+    if (is.vector(x)) {
+        x / sqrt(sum(x^2))
+    } else if (is.matrix(x)) {
+        x %*% diag(1 / sqrt(colSums(x^2)))
+    }
+}
+
+average <- function(mat, g) {
+    if (!is.matrix(mat) & is.character(g)) stop("mat must be matrix, g must be character")
+    A <- model.matrix(~ g + 0)
+    new_colnames <- gsub("^g", "", colnames(A))
+    A <- A %*% diag(1/colSums(A))
+    mat_bar <- mat %*% A
+    colnames(mat_bar) <- new_colnames
+    mat_bar
+}
+
+.cvdist <- function(x1, x2, m) {
+    D <- rowMeans(tcrossprod(m, x1) * tcrossprod(m, x2))  ## means to scale by num verts
+    dim(D) <- sqrt(c(length(D), length(D)))  ## must be square in current implementation
+    D
+}
+
+cvdist <- function(x1, x2, m = mikeutils::contrast_matrix(ncol(x1)), nms = NULL, center = FALSE, scale = FALSE) {
+    if (all(dim(x1) != dim(x2))) stop("x1 and x2 must be same size")
+    if (center) {
+        x1 <- center(x1)
+        x2 <- center(x2)
+    }
+    if (scale) {
+        x1 <- scale2unit(x1)
+        x2 <- scale2unit(x2)
+    }
+    D <- .cvdist(x1, x2, m)
+    # attr(D, "x1_ssq") <- sqrt(colSums(x1^2))
+    # attr(D, "x2_ssq") <- sqrt(colSums(x2^2))
+    # attr(D, "cv_sq") <- colSums(x1 * x2)
+    # attr(D, "x1_mu") <- colMeans(x1)
+    # attr(D, "x2_mu") <- colMeans(x2)
+    # attr(D, "n") <- nrow(x1)
+    if (!is.null(nms)) dimnames(D) <- list(nms, nms)
+    D
+}
+
+crcor <- function(x1, x2, n_resamples, expected_min){
+    stopifnot(length(dim(x1)) == 2 || length(dim(x2)) == 2)
+    
+    resample_idx1 <- 
+        get_resampled_idx(conditions = colnames(x1), n_resamples = n_resamples, expected_min = expected_min)
+    resample_idx2 <- 
+        get_resampled_idx(conditions = colnames(x2), n_resamples = n_resamples, expected_min = expected_min)
+
+    n_resamples <- nrow(resample_idx1)
+    res <- vector("list", n_resamples)
+    for (ii in seq_len(n_resamples)) {
+        idx1 <- resample_idx1[ii, ]
+        idx2 <- resample_idx2[ii, ]
+        x1i <- x1[, idx1, drop = FALSE]
+        x2i <- x2[, idx2, drop = FALSE]
+        res[[ii]] <- atanh(cor(average(x1i, colnames(x1i)), average(x2i, colnames(x2i))))
+    }
+    
+    tanh(Reduce("+", res) / length(res))  ## take mean over resamples and invert atanh
+
+}
+
+
+vec <- function(x) {
+    stopifnot(length(dim(x)) == 2)
+    x[lower.tri(x)]
+}
+offdiag <- function(x) {
+    stopifnot(length(dim(x)) == 2)
+    x[row(x) != col(x)]
+}
+
+
+indicator_matrix <- function(x) {
+    stopifnot(is.character(x))
+    X <- stats::model.matrix(~ as.factor(x) + 0)
+    colnames(X) <- gsub("^as\\.factor\\(x\\)", "", colnames(X))
+    attr(X, "assign") <- NULL
+    attr(X, "contrasts") <- NULL
+    X
+}
+
 Var <- function(x, dim = 1, ...) {
   ##https://stackoverflow.com/questions/25099825/row-wise-variance-of-a-matrix-in-r
   if(dim == 1){
@@ -113,6 +218,7 @@ Var <- function(x, dim = 1, ...) {
      rowSums((t(x) - colMeans(x, ...))^2, ...)/(dim(x)[1] - 1)
   } else stop("Please enter valid dimension")
 }
+
 
 
 ## reading behavioral data / trial-level information
@@ -167,30 +273,71 @@ read_atlas <- function(
 ## reading RSA models
 
 
-read_model_rdm <- function(cells = "all", session = NULL) {
+# read_model_rdm <- function(cells = "all", session = NULL) {
 
-    target <- as.matrix(fread(here("in", "model_target.csv")))
-    distractor <- as.matrix(fread(here("in", "model_distractor.csv")))
-    incongruency <- as.matrix(fread(here("in", "model_incongruency.csv")))
-    rownames(target) <- colnames(target)
-    rownames(distractor) <- colnames(distractor)
-    rownames(incongruency) <- colnames(incongruency)
+#     target <- as.matrix(fread(here("in", "model_target.csv")))
+#     distractor <- as.matrix(fread(here("in", "model_distractor.csv")))
+#     incongruency <- as.matrix(fread(here("in", "model_incongruency.csv")))
+#     rownames(target) <- colnames(target)
+#     rownames(distractor) <- colnames(distractor)
+#     rownames(incongruency) <- colnames(incongruency)
 
-    if (!is.null(session)) {
-        target <- target[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
-        distractor <- distractor[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
-        incongruency <- incongruency[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
-    }
+#     if (!is.null(session)) {
+#         target <- target[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
+#         distractor <- distractor[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
+#         incongruency <- incongruency[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
+#     }
 
-    if (cells == "all") {
-        list(target = target, distractor = distractor, incongruency = incongruency)
-    } else if (cells == "offdiag") {
-        cbind(target = offdiag(target), distractor = offdiag(distractor), incongruency = offdiag(incongruency))
-    } else if (cells == "lowertri") {
-        cbind(target = vec(target), distractor = vec(distractor), incongruency = vec(incongruency))
-    }
+#     if (cells == "all") {
+#         list(target = target, distractor = distractor, incongruency = incongruency)
+#     } else if (cells == "offdiag") {
+#         cbind(target = offdiag(target), distractor = offdiag(distractor), incongruency = offdiag(incongruency))
+#     } else if (cells == "lowertri") {
+#         cbind(target = vec(target), distractor = vec(distractor), incongruency = vec(incongruency))
+#     }
 
+# }
+
+
+read_model_rdm <- function(
+    model, measure_type, session, ttype_subset, 
+    base_dir = here::here("out", "rsa_models")
+    ){
+    x <- fread(
+        paste0(
+            base_dir, .Platform$file.sep, 
+            "model_", measure_type, "_", model, "_", session, "_", ttype_subset, ".csv")
+        )
+    R <- as.matrix(x[, -1])
+    rownames(R) <- x$run1
+    R
 }
+
+read_model_xmat <- function(
+    measure, session, ttype_subset, 
+    base_dir = here::here("out", "rsa_models"), 
+    .models = models[[measure]]
+    ) {
+    mods <- enlist(.models)
+    for (mod in .models) {
+        mods[[mod]] <- read_model_rdm(
+            model = mod, 
+            measure_type = switch(measure, crcor = "similarity", cveuc = "cvdistance"),
+            session = sessions,
+            ttype_subset = ttype_subset
+            )
+    }
+    cbind(intercept = 1, do.call(cbind, lapply(mods, switch(measure, crcor = c, cveuc = vec))))
+}
+
+## tidying regression output
+
+tidy_model <- function(B, terms, outcomes) {
+    B <- as.data.table(B)
+    names(B) <- outcomes
+    B$term <- terms
+    B
+ }
 
 
 ## for interacting with gifti objects
@@ -458,57 +605,6 @@ read_rdms <- function(
 
 }
 
-
-## math/stats functions
-
-
-average <- function(mat, g) {
-    if (!is.matrix(mat) & is.character(g)) stop("mat must be matrix, g must be character")
-    A <- model.matrix(~ g + 0)
-    new_colnames <- gsub("^g", "", colnames(A))
-    A <- A %*% diag(1/colSums(A))
-    mat_bar <- mat %*% A
-    colnames(mat_bar) <- new_colnames
-    mat_bar
-}
-
-.cvdist <- function(x1, x2, m) {
-    D <- rowMeans(tcrossprod(m, x1) * tcrossprod(m, x2))  ## means to scale by num verts
-    dim(D) <- sqrt(c(length(D), length(D)))  ## must be square in current implementation
-    D
-}
-
-cvdist <- function(x1, x2, m = mikeutils::contrast_matrix(ncol(x1)), nms = NULL, center = FALSE) {
-    if (all(dim(x1) != dim(x2))) stop("x1 and x2 must be same size")
-    D <- .cvdist(x1, x2, m)
-    attr(D, "x1_ssq") <- sqrt(colSums(x1^2))
-    attr(D, "x2_ssq") <- sqrt(colSums(x2^2))
-    attr(D, "cv_sq") <- colSums(x1 * x2)
-    attr(D, "x1_mu") <- colMeans(x1)
-    attr(D, "x2_mu") <- colMeans(x2)
-    attr(D, "n") <- nrow(x1)
-    if (!is.null(nms)) dimnames(D) <- list(nms, nms)
-    D
-}
-
-vec <- function(x) {
-    stopifnot(length(dim(x)) == 2)
-    x[lower.tri(x)]
-}
-offdiag <- function(x) {
-    stopifnot(length(dim(x)) == 2)
-    x[row(x) != col(x)]
-}
-
-
-indicator_matrix <- function(x) {
-    stopifnot(is.character(x))
-    X <- stats::model.matrix(~ as.factor(x) + 0)
-    colnames(X) <- gsub("^as\\.factor\\(x\\)", "", colnames(X))
-    attr(X, "assign") <- NULL
-    attr(X, "contrasts") <- NULL
-    X
-}
 
 
 ## resampling functions
