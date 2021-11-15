@@ -32,21 +32,32 @@ source(here("src", "stroop-rsa-pc.R"))
 ## set variables
 
 task <- "Stroop"
+n_resamples <- 1E3
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
     roiset <- "Schaefer2018Dev"
     prewh <- "none"
-    measure <- "cveuc"  ## crcor
+    measure <- "crcor"  ## crcor
     subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
     waves <- c("wave1", "wave2")
     sessions <- "reactive"
+    ttype_subset <- "bias"
     ii <- 1
     n_cores <- 10
     run_i <- 1
 } else {
     source(here("src", "parse_args.r"))
     print(args)
+}
+
+stopifnot(sessions %in% c("baseline", "proactive", "reactive"))
+stopifnot(measure %in% c("crcor", "cveuc"))
+
+if (sessions == "reactive" && ttype_subset == "bias") {
+    expected_min <- 6
+} else if (sessions == "proactive") {
+    expected_min <- 3
 }
 
 atlas <- read_atlas(roiset)
@@ -74,20 +85,19 @@ res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %d
     B <- enlist(runs)
     for (run_i in seq_along(runs)) {
         Bi <- read_dset(input_val[run == runs[run_i], file_name], input_val[run == runs[run_i], dset_name])
-        Bi_bar <- average(Bi, g = colnames(Bi))
-        colorder <- ttypes_by_run[[ses]][[run_i]]  ## paranoia, just to make sure all conditions orders are the same.
-        B[[run_i]] <- Bi_bar[, colorder]
-    }
-    
-    if (measure == "cveuc") {
-        
-        cvdist(B[[1]], B[[2]])  ## cross-validated euclidean distance
-
-    } else if (measure == "crcor") {
-        
-        crcor(B[[1]], B[[2]])  ## downsampled cross-run correlation
+        ttypes_to_get <- intersect(ttypes_by_run[[ses]][[run_i]], ttypes[[ttype_subset]])
+        B[[run_i]] <- Bi[, colnames(Bi) %in% ttypes_to_get]  ## discard low-trialcount trialtypes
     }
 
+    if (measure == "cveuc") {  ## cross-validated euclidean
+        cvdist(
+            average(B$run1, g = colnames(B$run1)),#[, ttypes_by_run[[ses]]$run1], ## paranoia, just to make sure all 
+            average(B$run2, g = colnames(B$run2)),#[, ttypes_by_run[[ses]]$run2], ## conditions orders are the same
+            scale = TRUE
+        )
+    } else if (measure == "crcor") {    ## cross-run correlation (with downsampling)
+        crcor(B$run1, B$run2, n_resamples = n_resamples, expected_min = expected_min)
+    }
 
 }
 stopImplicitCluster()
