@@ -17,7 +17,7 @@
 
 ## packages and sourced variables
 
-library(colorout)
+library(httpgd)
 library(here)
 library(dplyr)
 library(tidyr)
@@ -30,6 +30,7 @@ library(doParallel)
 library(CovTools)
 library(pracma)
 source(here("src", "stroop-rsa-pc.R"))
+hgd()
 
 ## set variables
 
@@ -45,7 +46,7 @@ if (interactive()) {
     waves <- c("wave1", "wave2")
     sessions <- "reactive"
     n_cores <- 10
-    ii <- 1606
+    ii <- 1
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -70,17 +71,18 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
     input_val <- input[ii, ]
     B <- read_dset(input_val$file_name, input_val$dset_name)
     
-    ## remove condition variance from trial-level obs (subtract condition mean pattern from each trial's pattern)
-    X <- model.matrix(~ colnames(B) + 0)  ## colnames of B gives the condition
-    resids <- resid(.lm.fit(X, B))
+    ## remove trial-wise variance due to conditions from each voxel
+    X <- indicator_matrix(colnames(B))  ## colnames of B gives the condition
+    resids <- resid(.lm.fit(X, t(B)))
+    
     ## estimate covariance matrix of residuals and invert
     if (prewh == "obsall") {
-        S <- CovEst.2010OAS(t(resids))$S
+        S <- CovEst.2010OAS(resids)$S
     } else if (prewh == "obsresamp") {
         S <- resample_apply_combine(
             x = resids, 
             resample_idx = get_resampled_idx(conditions = colnames(resids), n_resample, expected_min = 1),
-            apply_fun = function(.x) CovEst.2010OAS(t(.x))$S
+            apply_fun = function(.x) CovEst.2010OAS(.x)$S
             )
     }
     W <- sqrtm(S)$Binv  ## sqrt of inverse
