@@ -102,5 +102,5 @@ for (subject_i in seq_along(subjects)) {
 data <- rbindlist(res, idcol = "subject_wave")
 data <- separate(data, subject_wave, into = c("subject", "wave"))
 
-fout <- paste0("weights__subjlist-", subjlist, "__glm-", glmname, "__roiset-", roiset, "__prewh-", prewh, ".csv")
+fout <- paste0("weights-", measure, "__subjlist-", subjlist, "__glm-", glmname, "__roiset-", roiset, "__prewh-", prewh, ".csv")
 fwrite(data, here("out", "res", fout))
