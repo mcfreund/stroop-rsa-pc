@@ -61,55 +61,17 @@ done
 
 
 
+# ## 2. prewhiten coefs
 
+# for prewh in ${prewhs[@]}
+# do
+#     Rscript ./src/4_rsa/prewhiten_coefs.r \
+#         --glmname $glmname \
+#         --roiset $roiset \
+#         --subjlist $subjlist \
+#         --waves $waves \
+#         --sessions $sessions \
+#         --prewh $prewh \
+#         --n_cores 26
+# done
 
-
-## TEST 2. 
-
-## 2. prewhiten coefs
-
-for prewh in ${prewhs[@]}
-do
-    Rscript ./src/4_rsa/prewhiten_coefs.r \
-        --glmname $glmname \
-        --roiset $roiset \
-        --subjlist $subjlist \
-        --waves $waves \
-        --sessions $sessions \
-        --prewh $prewh \
-        --n_cores 26
-done
-
-
-
-
-## Misc: assess test-retest reliabilities of mean patterns ----
-
-## removed DMCC5820265, DMCC9478705, DMCC3963378 (baseline wave2 run 2)
-
-
-# Rscript ./src/4_rsa/parcellate_giftis.r \
-#     --glmname "lsall_1rpm" \
-#     --roiset "Schaefer2018Dev" \
-#     --subjlist "out/subjlist_all_retest.txt" \
-#     --waves "wave1 wave2" \
-#     --sessions "reactive proactive baseline"
-
-
-# Rscript ./src/4_rsa/pattern_reliability.r \
-#     --glmname "lsall_1rpm" \
-#     --roiset "Schaefer2018Dev" \
-#     --subjlist "out/subjlist_all_retest.txt" \
-#     --waves "wave1 wave2" \
-#     --sessions "reactive proactive baseline" \
-#     --outfile_prefix "trr-meanpatt__subjlist-ispc_retest"
-
-
-# Rscript ./src/4_rsa/pattern_reliability.r \
-#     --glmname "lsall_1rpm" \
-#     --roiset "Schaefer2018Dev" \
-#     --subjlist "out/subjlist_all_retest.txt" \
-#     --prewh "none" \
-#     --waves "wave1 wave2" \
-#     --sessions "reactive proactive baseline" \
-#     --outfile_prefix "trr-hilo__subjlist-ispc_retest"
