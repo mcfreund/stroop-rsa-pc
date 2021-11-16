@@ -61,17 +61,43 @@ done
 
 
 
-# ## 2. prewhiten coefs
 
-# for prewh in ${prewhs[@]}
-# do
-#     Rscript ./src/4_rsa/prewhiten_coefs.r \
-#         --glmname $glmname \
-#         --roiset $roiset \
-#         --subjlist $subjlist \
-#         --waves $waves \
-#         --sessions $sessions \
-#         --prewh $prewh \
-#         --n_cores 26
-# done
+## 2. prewhiten coefs
 
+prewh="obsall"
+glmname="lsall_1rpm"
+Rscript ./src/4_rsa/prewhiten_coefs.r \
+    --glmname $glmname \
+    --roiset $roiset \
+    --subjlist $subjlist \
+    --waves $waves \
+    --sessions $sessions \
+    --prewh $prewh \
+    --n_cores 26
+
+for measure in ${measures[@]}
+do
+    echo estimating distances
+    Rscript ./src/4_rsa/estimate_distances.r \
+        --glmname $glmname \
+        --roiset $roiset \
+        --subjlist $subjlist \
+        --waves $waves \
+        --sessions $sessions \
+        --measure $measure \
+        --prewh $prewh \
+        --ttype_subset $ttype_subset \
+        --n_cores 26
+    
+    echo regressing distances
+    Rscript ./src/4_rsa/regress_distances.r \
+        --glmname $glmname \
+        --roiset $roiset \
+        --subjlist $subjlist \
+        --waves $waves \
+        --sessions $sessions \
+        --measure $measure \
+        --prewh $prewh \
+        --ttype_subset $ttype_subset
+
+done
