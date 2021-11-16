@@ -114,6 +114,32 @@ enlist <- function(nms) setNames(vector("list", length(nms)), nms)
 #   apply(do.call(rbind, x), 2, as.list)  ## stack and reslice
 # }
 
+## wrangling RDMs
+
+
+melt_mat <- function(x, ...) {
+  ## a wrapper for reshape2::melt(), which converts matrices to long-form data.frames.
+  ## useful for subsequently plotting matrices with ggplot2().
+  stopifnot(length(dim(x)) == 2)  ## check that it's a matrix or something similar
+  m <- reshape2::melt(x, ...)  ## from reshape2 package. nice b/c converts dimnames of matrix into columns.
+  m[[1]] <- factor(m[[1]], levels = rev(unique(m[[1]])))  ## reverse one factor's levels so diag is topL->bottomR
+  m
+}
+
+plot_melted_mat <- function(x, .row = "Var1", .col = "Var2", .value = "value") {
+  ## a convenience function that plots numeric matrices with sensible defaults. 
+  ## that takes a dataframe x, possibly the output of melt_mat(), as input, along with
+  ## three strings .row, .col, .value, that indicate the names of the associated columns in the data.frame.
+  ## the default arguments are set to work with the labels that reshape2::melt() uses when names(dimnames(x)) 
+  ## are not set.
+  stopifnot(is.data.frame(x) && is.character(.row) && is.character(.col) && is.character(.value))
+  x %>%
+    ggplot2::ggplot(aes_string(.col, .row, fill = .value)) +
+    ggplot2::geom_tile(color = "grey50") +
+    ggplot2::scale_fill_gradient(low = "black", high = "white") +
+    ggplot2::scale_x_discrete(position = "top")
+}
+
 
 ## math/stats functions
 
@@ -442,6 +468,16 @@ construct_filenames_gifti <- function(
 
 }
 
+
+construct_filename_weights <- function(
+    measure, subjlist, glmname, roiset, prewh,
+    prefix = "weights", base_dir = here::here("out", "res")
+    ) {
+    paste0(
+        base_dir, .Platform$file.sep, 
+        prefix, "-", measure, "__subjlist-", subjlist, "__glm-", glmname, "__roiset-", roiset, "__prewh-", prewh, ".csv"
+        )
+}
 
 
 
