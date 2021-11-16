@@ -245,7 +245,18 @@ Var <- function(x, dim = 1, ...) {
   } else stop("Please enter valid dimension")
 }
 
+## writing rmarkdown reports
 
+render_report <- function(name, src_dir, params = NULL, ..., envir = new.env(), base_dir = here::here("src")) {
+  ## https://bookdown.org/yihui/rmarkdown/params-knit.html
+  rmarkdown::render(
+    file.path(base_dir, src_dir, paste0(name, ".rmd")), 
+    params = params,
+    output_file = paste0(name, "__", paste0(params, collapse = "__"), ".html"),
+    envir = envir,
+    ...
+  )
+}
 
 ## reading behavioral data / trial-level information
 
