@@ -1,256 +1,279 @@
-## 
-## defines functions for use in this project
+## TODO
+## construct_filename
+## takes data_type:
+## gifti, parcellated coefs, rdm, weights...
 
-## class def
-## https://adv-r.hadley.nz/s3.html, sec 13.3.1
+## settings ----
 
-new_parcellated_list  <- function(x = list(), glm_name = character(), roi_set = character(), prewhitened = logical(), shrinkage = numeric()) {
-    stopifnot(is.list(x) || is.character(glm_name) || is.character(roi_set) || is.logical(prewhitened) || is.numeric(shrinkage))
-    structure(x, class = "parcellated_list", glm_name = glm_name, roi_set = roi_set, prewhitened = prewhitened, shrinkage = shrinkage)
+options(datatable.print.trunc.cols = TRUE, datatable.print.class = TRUE, datatable.print.nrows = 50)
+
+
+## constants ----
+
+## system info
+
+n_core <- parallel::detectCores()
+
+## paths
+
+dir_atlas <- "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/"
+
+
+## "metadata" / variables
+
+## :: design info
+
+waves <- c("wave1", "wave2")
+sessions <- c("baseline", "proactive", "reactive")
+sesss <- c("Bas", "Pro", "Rea")
+runs <- c("run1", "run2")
+#hemis <- c("L", "R")
+#run_hemis <- c("run1_L", "run1_R", "run2_L", "run2_R")
+#wave_dir_image <- c(wave1 = "HCP_SUBJECTS_BACKUPS", wave2 = "DMCC_Phase3")
+#wave_dir_evts <- c(wave1 = "DMCC2", wave2 = "DMCC3")
+colors_bias <- c("blue", "red", "purple", "white")
+colors_pc50 <- c("black", "green", "pink", "yellow")
+words_bias <- toupper(colors_bias)
+words_pc50 <- toupper(colors_pc50)
+ttypes <- list(
+    bias = sort(apply(expand.grid(colors_bias, words_bias), 1, paste0, collapse = "")),
+    pc50 = sort(apply(expand.grid(colors_pc50, words_pc50), 1, paste0, collapse = ""))
+)
+ttypes$all <- sort(c(ttypes$bias, ttypes$pc50))
+#ttypes_bias <- sort(apply(expand.grid(colors_bias, words_bias), 1, paste0, collapse = ""))
+#ttypes_pc50 <- sort(apply(expand.grid(colors_pc50, words_pc50), 1, paste0, collapse = ""))
+#ttypes <- sort(c(ttypes_bias, ttypes_pc50))
+ttypes_by_run <- list(
+    baseline = 
+        list(
+            run1 = sort(fread(here("in", "ttypes_baseline_run1.txt"), header = FALSE)[[1]]),
+            run2 = sort(fread(here("in", "ttypes_baseline_run2.txt"), header = FALSE)[[1]])
+            ),
+    proactive = 
+        list(
+            run1 = sort(fread(here("in", "ttypes_proactive_run1.txt"), header = FALSE)[[1]]),
+            run2 = sort(fread(here("in", "ttypes_proactive_run2.txt"), header = FALSE)[[1]])
+            ),
+    reactive = 
+        list(
+            run1 = sort(fread(here("in", "ttypes_reactive.txt"), header = FALSE)[[1]]),
+            run2 = sort(fread(here("in", "ttypes_reactive.txt"), header = FALSE)[[1]])
+            )
+)
+n_ttype <- c(
+    baseline = 20,
+    proactive = 26,
+    reactive = 26
+    )  ## unique ttypes PER RUN!! (gives maximum dimension of cross-run/cross-validated RDMs)
+n_vertex <- 20484  ## surface hcp mesh fslr5
+n_tr <- c(
+  baseline  = 540,
+  proactive = 540,
+  reactive  = 590
+)  ## number of tr per subj*run for stroop task
+n_trial <- c(
+  baseline = 108,
+  proactive = 108,
+  reactive = 120
+  )  ## number of trials (events) per subj*run for stroop task
+n_run <- 2
+n_session <- 3
+models <- list(
+    cveuc = c("distractor", "incongruency", "target"),
+    crcor = c("conjunction", "distractor", "incongruency", "target")
+)
+
+## :: analytic info (expected values)
+
+expected <- list(
+    glmname = c("lsall_1rpm", "lss_1rpm", "item_1rpm"),
+    prewh   = c("none", "resid", "obs", "rest"),
+    roiset  = 
+        c("Schaefer2018Dev", "Schaefer2018Network", "Schaefer2018Parcel", "Glasser2016Network", "Glasser2016Parcel")
+)
+
+core32 <- c(
+  99, 127, 129, 130, 131, 132, 137, 140, 141, 142, 148, 163, 165, 182, 186, 300, 332, 333, 334, 335, 336, 337, 340, 345, 
+  349, 350, 351, 352, 354, 361, 365, 387
+)  ## parcel indexes in Schaefer2018
+
+
+
+
+## functions ----
+
+## misc
+
+get_network <- function(x) gsub("^.H_(Vis|SomMot|Cont|Default|Limbic|SalVentAttn|DorsAttn)_.*", "\\1", x)
+combo_paste <- function(a, b, sep = "", ...) apply(expand.grid(a, b, ...), 1, paste0, collapse = sep)
+enlist <- function(nms) setNames(vector("list", length(nms)), nms)
+# invert_list <- function(l) { 
+#   ## https://stackoverflow.com/questions/15263146/revert-list-structure
+#   ## @Josh O'Brien
+#   x <- lapply(l, `[`, names(l[[1]]))  ## get sub-elements in same order
+#   apply(do.call(rbind, x), 2, as.list)  ## stack and reslice
+# }
+
+## wrangling RDMs
+
+
+melt_mat <- function(x, ...) {
+  ## a wrapper for reshape2::melt(), which converts matrices to long-form data.frames.
+  ## useful for subsequently plotting matrices with ggplot2().
+  stopifnot(length(dim(x)) == 2)  ## check that it's a matrix or something similar
+  m <- reshape2::melt(x, ...)  ## from reshape2 package. nice b/c converts dimnames of matrix into columns.
+  m[[1]] <- factor(m[[1]], levels = rev(unique(m[[1]])))  ## reverse one factor's levels so diag is topL->bottomR
+  m
+}
+
+plot_melted_mat <- function(x, .row = "Var1", .col = "Var2", .value = "value") {
+  ## a convenience function that plots numeric matrices with sensible defaults. 
+  ## that takes a dataframe x, possibly the output of melt_mat(), as input, along with
+  ## three strings .row, .col, .value, that indicate the names of the associated columns in the data.frame.
+  ## the default arguments are set to work with the labels that reshape2::melt() uses when names(dimnames(x)) 
+  ## are not set.
+  stopifnot(is.data.frame(x) && is.character(.row) && is.character(.col) && is.character(.value))
+  x %>%
+    ggplot2::ggplot(aes_string(.col, .row, fill = .value)) +
+    ggplot2::geom_tile(color = "grey50") +
+    ggplot2::scale_fill_gradient(low = "black", high = "white") +
+    ggplot2::scale_x_discrete(position = "top")
 }
 
 
-x <- parc_gii
-validate_parcellated_list <- function(x) {
-    ## check types within list
-    ## check consistency of features across folds, obs across rois
-    ## check values of attr
-    
-    if (!identical("list", unique(vapply(x, class, character(1))))) stop("x is not nested list")
-    if (any(!c("data", "labels") %in% names(x))) stop("x does not contain 'data' or 'labels' names")
-    
-    x_data <- x$data
-    x_labels <- x$labels
-    if (!identical("list", unique(vapply(x_data, class, character(1))))) stop("x$data is not nested list")
-    if (!identical("character", unique(vapply(x_labels, class, character(1))))) stop("x$labels is not list of character vectors")
-    
-    n_fold_data <- unique(vapply(x_data, length, numeric(1)))
-    n_fold_label <- length(x_labels)
-    if (length(n_fold_data) != 1L) stop("Contains differing numbers of folds across ROIs.")
-    if (n_fold_data != n_fold_label) stop("Mismached folds in data and labels.")
+## math/stats functions
 
-    if (any(duplicated(names(x_data)))) stop("x$data contains duplicate ROI names")
-
-    u <- unlist(x_data, recursive = FALSE)
-    if (any(duplicated(u))) stop("x$data contains duplicate roi*folds")
-    vapply(u, class, character(1))
-    n_obs <- unique(vapply(u, ncol, numeric(1)))
-    if (length(n_obs) != 1L) stop("x$data number of observations")
-    
-    
-
-
-
-
-
+center <- function(x) {
+    stopifnot(length(dim(x)) == 2)
+    x - rep(colMeans(x), rep.int(nrow(x), ncol(x)))
 }
 
-invert_list <- function(l) { 
-  ## https://stackoverflow.com/questions/15263146/revert-list-structure
-  ## @Josh O'Brien
-  x <- lapply(l, `[`, names(l[[1]]))  ## get sub-elements in same order
-  apply(do.call(rbind, x), 2, as.list)  ## stack and reslice
+scale2unit <- function(x) {
+    stopifnot(is.matrix(x) || is.vector(x))
+    if (is.vector(x)) {
+        x / sqrt(sum(x^2))
+    } else if (is.matrix(x)) {
+        x %*% diag(1 / sqrt(colSums(x^2)))
+    }
 }
 
-as_parcellated_list  <- function(giftis, fold_hemis, atlas, labels_from_data = TRUE, pattern = NULL) {
-    ## giftis: list of gifti images of length N_folds*N_hemi (one element per fold*hemi)
-    ## hemis, folds: vectors of length length(giftis), specifying hemi and fold value per element of gifti
-    ## atlas: list of data and key of parcellation atlas
-   
-   fold_hemis <- strsplit(fold_hemis, "_")
-   folds <- unlist(lapply(fold_hemis, "[", 1))
-   hemis <- unlist(lapply(fold_hemis, "[", 2))
+average <- function(mat, g) {
+    if (!is.matrix(mat) & is.character(g)) stop("mat must be matrix, g must be character")
+    A <- model.matrix(~ g + 0)
+    new_colnames <- gsub("^g", "", colnames(A))
+    A <- A %*% diag(1/colSums(A))
+    mat_bar <- mat %*% A
+    colnames(mat_bar) <- new_colnames
+    mat_bar
+}
 
-    if (!(length(giftis) == length(folds) && length(folds) == length(hemis))) stop("giftis must have length equal to length(folds) == length(hemis)")
-    if (!(class(giftis[[1]]) == class(giftis[[2]]) && class(giftis[[1]]) == "gifti")) stop("elements of giftis must be of class gifti")
-    #if (isFALSE(all.equal(giftis[[1]]$data_info$Dim0, giftis[[2]]$data_info$Dim0))) stop("giftis must have same dimensions")
-    if (!is.character(folds)) stop("folds must be class character")
-    if (!is.character(hemis)) stop("hemis must be class character")
-    if (!any(hemis %in% c("L", "R"))) stop("hemis not in L, R")
-    if (length(hemis) %% 2 != 0L) stop("length(hemis) must be even number")
-    if (!is.logical(labels_from_data)) stop("labels_from_data must be logical")
-    if (!(is.character(pattern) || is.null(pattern))) stop("pattern must be character or NULL")
+.cvdist <- function(x1, x2, m) {
+    D <- rowMeans(tcrossprod(m, x1) * tcrossprod(m, x2))  ## means to scale by num verts
+    dim(D) <- sqrt(c(length(D), length(D)))  ## must be square in current implementation
+    D
+}
 
-    ## extract data, labels
+cvdist <- function(x1, x2, m = mikeutils::contrast_matrix(ncol(x1)), nms = NULL, center = FALSE, scale = FALSE) {
+    if (all(dim(x1) != dim(x2))) stop("x1 and x2 must be same size")
+    if (center) {
+        x1 <- center(x1)
+        x2 <- center(x2)
+    }
+    if (scale) {
+        x1 <- scale2unit(x1)
+        x2 <- scale2unit(x2)
+    }
+    D <- .cvdist(x1, x2, m)
+    # attr(D, "x1_ssq") <- sqrt(colSums(x1^2))
+    # attr(D, "x2_ssq") <- sqrt(colSums(x2^2))
+    # attr(D, "cv_sq") <- colSums(x1 * x2)
+    # attr(D, "x1_mu") <- colMeans(x1)
+    # attr(D, "x2_mu") <- colMeans(x2)
+    # attr(D, "n") <- nrow(x1)
+    if (!is.null(nms)) dimnames(D) <- list(nms, nms)
+    D
+}
 
-    l <- split(giftis, folds)
-    hemis_split <- split(hemis, folds)  ## for reordering 
-    unique_folds <- unique(folds)
-    d <- enlist(unique_folds)
-    labels <- enlist(unique_folds)
-    for (fold_i in seq_along(l)) {
+crcor <- function(x1, x2, n_resamples, expected_min){
+    stopifnot(length(dim(x1)) == 2 || length(dim(x2)) == 2)
+    
+    resample_idx1 <- 
+        get_resampled_idx(conditions = colnames(x1), n_resamples = n_resamples, expected_min = expected_min)
+    resample_idx2 <- 
+        get_resampled_idx(conditions = colnames(x2), n_resamples = n_resamples, expected_min = expected_min)
 
-        l_val <- lapply(l[[fold_i]], function(x) abind::abind(x$data))  ## extract
-        l_val <- l_val[order(hemis_split[[fold_i]])]  ## ensure L then R
-        l_val <- abind::abind(l_val, along = 1)  ## L then R concat
-        
-        if (labels_from_data) {
-            labs <- vapply(l[[fold_i]][[1]]$data_meta, function(x) x[1, "vals"], character(1))
-            #labs_R <- vapply(l[[fold_i]][[2]]$data_meta, function(x) x[1, "vals"], character(1))  ## add to is.parcellated_image()
-            #if (!identical(labs, labs_R)) stop("labs not identical across hemisphere")
-            colnames(l_val) <- labs
-            if (!is.null(pattern)) {
-                idx <- grep(pattern, labs)
-                l_val <- l_val[, idx]
-                labs <- labs[idx]
-            }
-            labels[[fold_i]] <- labs
-        }
-
-        d[[fold_i]] <- l_val
-
+    n_resamples <- nrow(resample_idx1)
+    res <- vector("list", n_resamples)
+    for (ii in seq_len(n_resamples)) {
+        idx1 <- resample_idx1[ii, ]
+        idx2 <- resample_idx2[ii, ]
+        x1i <- x1[, idx1, drop = FALSE]
+        x2i <- x2[, idx2, drop = FALSE]
+        res[[ii]] <- atanh(cor(average(x1i, colnames(x1i)), average(x2i, colnames(x2i))))
     }
     
-    ## parcellate data
-    
-    data <- enlist(names(atlas$rois))
-    for (roi_i in seq_along(atlas$rois)) {
-        which_parcels <- which(atlas$key %in% atlas$rois[[roi_i]])
-        is_roi <- atlas$data %in% which_parcels
-        data[[roi_i]] <- lapply(d, function(x) x[is_roi, ])
-    }
-    
-    ## get "good list"
-    
-    get_good_vertices <- function(x) {
-        n_vertex_roi <- unique(vapply(x, nrow, numeric(1)))
-        if (length(n_vertex_roi) != 1) stop ("something very wrong")
-        is_good_vertex_folds <- vapply(x, function(y) apply(y, 1, var) > 0, logical(n_vertex_roi))
-        rowSums(is_good_vertex_folds) > 0  ## collapse across folds (must be good in all)
-    }
-    good_vertices <- lapply(data, get_good_vertices)
-
-    out <- list(data = data, good_vertices = good_vertices, labels = labels)
-    class(out) <- c("parcellated_list", "list")
-
-    out
-
-}
-
-is.parcellated_list <- function(x) inherits(x, "parcellated_list")
-
-print.parcellated_list <- function(x) {
-
-    n_roi <- length(x$data)
-    n_fold <- length(x$data[[1]])
-    dims <- vapply(x$data, function(x) dim(x[[1]]), numeric(2))
-    range_vertex <- range(dims[1, ])
-    n_trialtype <- unique(dims[2, ])
-    # cat(length(x$data[[1]]), "folds \n")
-    # cat(length(x$data[[1]]), "folds \n")
-    out_string <- paste0(
-        "parcellated list of ", n_roi, " ROIs (", min(range_vertex), "-", max(range_vertex), " features by ", n_trialtype, " conditions), ", 
-        "each with ", n_fold, " folds\n"
-    )
-
-    cat(out_string)
-
-}
-
-coef.parcellated_list <- function(x, rois = NULL, folds = NULL, good_vertices = TRUE, reduce = TRUE) {
-    
-    get_good_vertices_loop <- function(.data_roi, .good_vertices_roi) lapply(.data_roi, function(.x) .x[.good_vertices_roi, ])
-
-    if (is.null(rois)) {
-        out <- x$data
-    } else {
-        out <- x$data[rois]
-    }
-
-    if (!is.null(folds)) out <- lapply(out, function(a) a[folds])
-
-    if (good_vertices) {
-        if (!is.null(rois)) {
-            good_vertices_rois <- x$good_vertices[rois, drop = FALSE]
-        } else {
-            good_vertices_rois <- x$good_vertices
-        }
-        out <- Map(function(a, b) get_good_vertices_loop(a, b), out, good_vertices_rois)
-    }
-
-    if (reduce) {
-        if (length(rois) == 1) {  ## when only one ROI selected
-            out <- out[[1]]
-            if (length(folds) == 1) out <- out[[1]]
-        } else if (length(folds) == 1) {
-            out <- lapply(out, function(a) a[[1]])
-        }
-    }
-
-    return(out)
+    tanh(Reduce("+", res) / length(res))  ## take mean over resamples and invert atanh
 
 }
 
 
-
-relabel <- function(x, nms, rename_cols = FALSE) {
-    if (!is.list(nms)) stop("nms must be list")
-    if (length(x$labels) != length(nms)) stop("n_folds in new labels must equal n_folds in old labels")
-    if (!identical(lapply(x$labels, length), lapply(nms, length))) stop("n_folds and names in new labels must equal those in old labels")  ## ensure check to ncol in is.parcellated_image()
-
-
-    x$labels <- nms
-
-    if (rename_cols) {
-        for (roi_i in seq_along(x$data)) {
-            for (fold_i in seq_along(x$data[[roi_i]])) colnames(x$data[[roi_i]][[fold_i]]) <- nms[[fold_i]]
-        }
-    }
-
-    x
-
+vec <- function(x) {
+    stopifnot(length(dim(x)) == 2)
+    x[lower.tri(x)]
+}
+offdiag <- function(x) {
+    stopifnot(length(dim(x)) == 2)
+    x[row(x) != col(x)]
 }
 
 
-parcellated_lapply <- function(x, f, ..., as_parcellated_list = TRUE) {
-    if (!is.parcellated_list(x)) stop("not parcellated_list")  ## add check to is....() for same number of cols across ROIs.
-
-    u <- unlist(x$data, recursive = FALSE)
-    res <- parallel::mclapply(u, f, ...)
-    names(res) <- unlist(lapply(x$data, names), use.names = FALSE)
-    x$data <- split(res, names(x$data))
-
-    if (as_parcellated_list && !is.parcellated_list(x)) stop("result no longer parcellated_list")
-    
-    x
-
+indicator_matrix <- function(x) {
+    stopifnot(is.character(x))
+    X <- stats::model.matrix(~ as.factor(x) + 0)
+    colnames(X) <- gsub("^as\\.factor\\(x\\)", "", colnames(X))
+    attr(X, "assign") <- NULL
+    attr(X, "contrasts") <- NULL
+    X
 }
 
-as.array.parcellated_list <- function(x) {
-    if (!is.parcellated_list(x)) stop("not parcellated_list")  ## add check to is....() for same number of cols across ROIs.
-    #n_cols <- unlist(lapply(x$data, function(x) lapply(x, ncol)))
-    #n_unique_ncols <- length(unique(n_cols))
-    n_rows <- unlist(lapply(x$data, function(x) lapply(x, nrow)))
-    n_unique_nrows <- length(unique(n_rows))
-    if (n_unique_nrows != 1L) stop("n_rows must be matched across folds")
-
-    nms <- list(
-        Var1 = rownames(x$data[[1]][[1]]),
-        Var2 = colnames(x$data[[1]][[1]]),
-        fold = names(x$data[[1]]),
-        roi = names(x$data)
-    )
-    
-    u <- unlist(x$data, recursive = FALSE)
-    u <- u[sort(combo_paste(nms$roi, nms$fold, sep = "."))]  ## sort b/c unlist screws up order?
-
-    a <- abind::abind(u, along = 0)
-    ap <- aperm(a, c(2, 3, 1))
-    dim(ap) <- lapply(nms, length)
-    dimnames(ap) <- nms
-    
-    ap
-
+Var <- function(x, dim = 1, ...) {
+  ##https://stackoverflow.com/questions/25099825/row-wise-variance-of-a-matrix-in-r
+  if(dim == 1){
+     rowSums((x - rowMeans(x, ...))^2, ...)/(dim(x)[2] - 1)
+  } else if (dim == 2) {
+     rowSums((t(x) - colMeans(x, ...))^2, ...)/(dim(x)[1] - 1)
+  } else stop("Please enter valid dimension")
 }
 
+## writing rmarkdown reports
 
-## read atlas
+render_report <- function(name, src_dir, params = NULL, ..., envir = new.env(), base_dir = here::here("src")) {
+  ## https://bookdown.org/yihui/rmarkdown/params-knit.html
+  rmarkdown::render(
+    file.path(base_dir, src_dir, paste0(name, ".rmd")), 
+    params = params,
+    output_file = paste0(name, "__", paste0(params, collapse = "__"), ".html"),
+    envir = envir,
+    ...
+  )
+}
 
+## reading behavioral data / trial-level information
+
+read_trialinfo <- function() {
+    b <- data.table::fread(here::here("in", "behavior-and-events_stroop_2021-10-20_nice.csv"))
+    dplyr::arrange(b, "subj", "wave", "session", "run", "trial_num")    ## sort to match col order of fmri beta matrix
+}
+
+## classdef: "atlas"
 ## see here for more: https://github.com/mcfreund/psychomet/tree/master/in
 
-read_atlas <- function(roiset = "Schaefer2018_control", dir_atlas = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/") {
+read_atlas <- function(
+    roiset = "Schaefer2018_control", 
+    dir_atlas = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/"
+    ) {
     
-    configured <- c("Schaefer2018_control", "Schaefer2018_parcel", "Schaefer2018_network")
+    configured <- c("Schaefer2018Dev", "Schaefer2018Parcel", "Schaefer2018Network")
     if (!roiset %in% configured) stop("roiset not configured")
     
     atlas <- list()
@@ -264,15 +287,15 @@ read_atlas <- function(roiset = "Schaefer2018_control", dir_atlas = "/data/nil-b
             )
         atlas$key <- data.table::fread(here::here("in", "atlas-key_schaefer400-07.csv"))$parcel
 
-        if (roiset == "Schaefer2018_control") {
+        if (roiset == "Schaefer2018Dev") {
             parcel_core32 <- atlas$key[core32]
             parcel_vis <- atlas$key[grep("_Vis_", atlas$key)]
             parcel_sommot <- atlas$key[grep("_SomMot_", atlas$key)]
             parcels_control <- c(core32 = list(parcel_core32), Vis = list(parcel_vis), SomMot = list(parcel_sommot))
             atlas$rois <- c(setNames(as.list(parcel_core32), parcel_core32), parcels_control)
-        } else if ("Schaefer2018_network") {
+        } else if ("Schaefer2018Network") {
             atlas$rois <- split(atlas$key$parcel, get_network(atlas$key$parcel))
-        } else if ("Schaefer2018_parcel") {
+        } else if ("Schaefer2018Parcel") {
             atlas$rois <- split(atlas$key$parcel, atlas$key$parcel)
         }
 
@@ -284,11 +307,386 @@ read_atlas <- function(roiset = "Schaefer2018_control", dir_atlas = "/data/nil-b
     
 }
 
-## misc
+## reading RSA models
+
+
+# read_model_rdm <- function(cells = "all", session = NULL) {
+
+#     target <- as.matrix(fread(here("in", "model_target.csv")))
+#     distractor <- as.matrix(fread(here("in", "model_distractor.csv")))
+#     incongruency <- as.matrix(fread(here("in", "model_incongruency.csv")))
+#     rownames(target) <- colnames(target)
+#     rownames(distractor) <- colnames(distractor)
+#     rownames(incongruency) <- colnames(incongruency)
+
+#     if (!is.null(session)) {
+#         target <- target[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
+#         distractor <- distractor[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
+#         incongruency <- incongruency[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
+#     }
+
+#     if (cells == "all") {
+#         list(target = target, distractor = distractor, incongruency = incongruency)
+#     } else if (cells == "offdiag") {
+#         cbind(target = offdiag(target), distractor = offdiag(distractor), incongruency = offdiag(incongruency))
+#     } else if (cells == "lowertri") {
+#         cbind(target = vec(target), distractor = vec(distractor), incongruency = vec(incongruency))
+#     }
+
+# }
+
+
+read_model_rdm <- function(
+    model, measure_type, session, ttype_subset, 
+    base_dir = here::here("out", "rsa_models")
+    ){
+    x <- fread(
+        paste0(
+            base_dir, .Platform$file.sep, 
+            "model_", measure_type, "_", model, "_", session, "_", ttype_subset, ".csv")
+        )
+    R <- as.matrix(x[, -1])
+    rownames(R) <- x$run1
+    R
+}
+
+read_model_xmat <- function(
+    measure, session, ttype_subset, 
+    base_dir = here::here("out", "rsa_models"), 
+    .models = models[[measure]]
+    ) {
+    mods <- enlist(.models)
+    for (mod in .models) {
+        mods[[mod]] <- read_model_rdm(
+            model = mod, 
+            measure_type = switch(measure, crcor = "similarity", cveuc = "cvdistance"),
+            session = sessions,
+            ttype_subset = ttype_subset
+            )
+    }
+    cbind(intercept = 1, do.call(cbind, lapply(mods, switch(measure, crcor = c, cveuc = vec))))
+}
+
+## tidying regression output
+
+tidy_model <- function(B, terms, outcomes) {
+    B <- as.data.table(B)
+    names(B) <- outcomes
+    B$term <- terms
+    B
+ }
+
+
+## for interacting with gifti objects
+
+extract_labels <- function(gifti) {
+    stopifnot(class(gifti) == "gifti")
+    vapply(gifti$data_meta, function(x) x[1, "vals"], character(1))
+}
+
+extract_data <- function(gifti, pattern = NULL) {
+    stopifnot(class(gifti) == "gifti")
+    data <- abind::abind(gifti$data)  ## extract
+    colnames(data) <- extract_labels(gifti)
+    if (!is.null(pattern)) data <- data[, grep(pattern, colnames(data))]
+    data
+}
+
+concat_hemis <- function(l, hemis = c("L", "R"), pattern = NULL) {
+    if (class(l) != "list" || !identical(vapply(l, class, ""), c("gifti", "gifti"))) stop("l must be list of 2 giftis")
+    stopifnot(sort(hemis) == c("L", "R"))
+    abind::abind(lapply(l[order(hemis)], extract_data, pattern = pattern), along = 1)
+}
+
+parcellate_data <- function(x, atlas) {
+    if (!identical(class(x), "matrix")) stop("x must be of class matrix")
+    if (nrow(x) != length(atlas$data)) stop("nrow(x) does not match nrow(atlas$data)")
+    out <- enlist(names(atlas$rois))
+    for (roi_i in seq_along(atlas$rois)) {
+        which_parcels <- which(atlas$key %in% atlas$rois[[roi_i]])
+        is_roi <- atlas$data %in% which_parcels
+        out[[roi_i]] <- x[is_roi, ]
+    }
+    out
+}
+
+rename_dim <- function(m, new_names, DIM = 2) {
+    if (!is.array(m)) stop("x must be matrix or array")
+    dimnames(m)[[DIM]] <- new_names
+    m
+}
+
+
+## filename constructors
+
+construct_filename_gifti <- function(
+    subject, wave, session, run, glmname, hemi,
+    task = "Stroop", 
+    base_dir = here::here("out", "glms"), 
+    prefix = "STATS", 
+    suffix = "_REML.func.gii"
+    ){
+    
+    arg <- as.list(environment())
+    if (any(vapply(arg, length, numeric(1)) > 1)) stop("not yet configured for length>1 args")
+
+    file.path(
+        base_dir, subject, wave, "RESULTS", task, paste0(session, "_", glmname),
+        paste0(prefix, "_", subject, "_", run, "_", hemi, suffix)
+        )
+}
 
 
 
+construct_filenames_gifti <- function(
+    subjects, waves, sessions, runs, glmnames, 
+    hemis = c("L", "R"), 
+    task = "Stroop", 
+    base_dir = here::here("out", "glms"), 
+    prefix = "STATS", 
+    suffix = "_REML.func.gii",
+    returnDT = TRUE
+    ){
+    
+    d <- expand.grid(
+        subject = subjects, wave = waves, session = sessions, run = runs, glmname = glmname,
+        hemi = hemis,
+        stringsAsFactors = FALSE
+    )
 
-get_network <- function(x) gsub("^.H_(Vis|SomMot|Cont|Default|Limbic|SalVentAttn|DorsAttn)_.*", "\\1", x)
-combo_paste <- function(a, b, sep = "", ...) apply(expand.grid(a, b, ...), 1, paste0, collapse = sep)
-enlist <- function(nms) setNames(vector("list", length(nms)), nms)
+    missing_col <- names(d)[!names(d) %in% c("subject", "wave", "session", "run", "glmname", "hemi")]
+    if (length(missing_col) > 0) stop("missing column:", missing_col)
+    
+    filename <- vector("character", nrow(d))
+    for (row_i in seq_len(nrow(d))) {
+        x <- d[row_i, ]
+        filename[row_i] <- construct_filename_gifti(
+            subject = x$subject, wave = x$wave, 
+            session = x$session, run = x$run, 
+            glmname = x$glmname, hemi = x$hemi,
+            task = task, base_dir = base_dir, prefix = prefix, suffix = suffix
+        )
+    }
+
+    if (returnDT) {
+        d$filename <- filename
+        data.table::setDT(d, key = c("subject", "wave", "session", "run", "hemi"))
+        d
+    } else {
+        filename
+    }
+
+
+}
+
+
+construct_filename_weights <- function(
+    measure, subjlist, glmname, roiset, prewh,
+    prefix = "weights", base_dir = here::here("out", "res")
+    ) {
+    paste0(
+        base_dir, .Platform$file.sep, 
+        prefix, "-", measure, "__subjlist-", subjlist, "__glm-", glmname, "__roiset-", roiset, "__prewh-", prewh, ".csv"
+        )
+}
+
+
+
+## hdf5 interface functions
+
+## reading/writing parcellated data files (matrices built from segmented gifti images).
+
+## dataset_prefix encodes data 'type' (coefs, resids, invcov, ...).
+## analysis variables (glm, prewh, ...) encoded in dataset_suffix.
+## these functions are structured to support a one file per "sample" approach: subject*wave*session*(task*run)*roi
+## due to separate files, the separate "samples" can be read/written in parallel.
+## (see here for helpful discussion of issues: https://github.com/lgatto/MSnbase/issues/403)
+## in the present case, this allows essentially all central operations of a script to be wrapped in a parallelizing 
+## function (such as foreach::foreach()), simplifying development of fast code.
+## the downside of this approach is that the directory containing these files will be very wide, with many thousands of
+## files.
+## thus this directory (parcellated/.d) will be hidden.
+## to aid in accessing (subsets of) these files/datasets, a master.h5 file containing external links to each dataset
+## will be written in the top directory (parcellated).
+## importantly, this master file will need to be created *outside* of the parallelizing loop (in serial).
+## for convenience, write_dset() returns the filename and dataset name of the written data as a named character vector.
+## write_links() therefore a list of such character vectors, loops over them serially, and creates this master file.
+## read_master() reads this master file of links and does some string editing to make subsetting easier.
+## an additional option includes saving of colnames.
+## write_dset() optionally saves colnames of matrix as dataset attribute.
+## read_dset() optionally reads colnames and adds as dimnames attribute to R matrix.
+## read_dset() uses external links within the master file to access the file/dataset.
+
+# .construct_filename_rdm
+# .construct_filename_gifti
+# .construct_filename_coefs
+
+
+# .construct_dsetname_coefs
+# .construct_dsetname_rdm
+
+construct_filename_rdm <- function(
+    measure, glmname, roiset, prewh, 
+    base_dir = here::here("out", "res")
+    ){
+    paste0(
+        base_dir, .Platform$file.sep, "rdm-", measure, "__glm-", glmname, "__roiset-", roiset, "__prewh-", prewh, ".h5"
+        )
+}
+
+
+
+construct_filename_h5 <- function(
+    subject, wave, session, run, roiset, roi, 
+    base_dir = here::here("out", "parcellated", ".d")
+    ){
+    paste0(base_dir, .Platform$file.sep, subject, "_", wave, "_", session, "_", run, "_", roiset, "_", roi, ".h5")
+}
+construct_dsetname_h5 <- function(
+    dset_prefix, subject, wave, session, run, roiset, roi, 
+    glmname, prewh,
+    base_dir = here::here("out", "parcellated", ".d")
+    ){
+    paste0(
+        dset_prefix, "__", subject, "__", wave, "__", session, "__", run, "__", roiset, "__", roi, "__", 
+        "glm-", glmname, "__prewh-", prewh
+        )
+}
+
+
+.write_dset_dimnames <- function(mat, file_name, dset_name, idx) {
+    fid <- rhdf5::H5Fopen(file_name)
+    did <- rhdf5::H5Dopen(fid, dset_name)
+    rhdf5::h5writeAttribute(dimnames(mat)[[idx]], did, switch(idx, "rownames", "colnames"))
+    rhdf5::H5Dclose(did)
+    rhdf5::H5Fclose(fid)
+}
+
+write_dset <- function(
+    mat, dset_prefix, subject, wave, session, run, roiset, roi, glmname, prewh,
+    base_dir = here::here("out", "parcellated", ".d"),
+    write_colnames = FALSE,
+    write_rownames = FALSE
+    ) {
+    file_name <- construct_filename_h5(subject, wave, session, run, roiset, roi, base_dir)
+    dset_name <- construct_dsetname_h5(dset_prefix, subject, wave, session, run, roiset, roi, glmname, prewh, base_dir)
+    rhdf5::h5write(mat, file = file_name, name = dset_name)
+    if (write_rownames) .write_dset_dimnames(mat, file_name, dset_name, 1)
+    if (write_colnames) .write_dset_dimnames(mat, file_name, dset_name, 2)
+    c(file_name = file_name, dset_name = dset_name)
+}
+
+construct_filenames_h5 <- function(
+    prefix, subjects, waves, sessions, rois, runs, glmname, prewh
+    ){    
+    input <- expand.grid(
+        subj = subjects, wave = waves, session = sessions, roi = rois, run = runs, 
+        stringsAsFactors = FALSE
+        )
+    setDT(input)
+    input[, file_name := construct_filename_h5(subj, wave, session, run, roiset, roi)]
+    input[, dset_name := construct_dsetname_h5(prefix, subj, wave, session, run, roiset, roi, glmname, prewh)]
+    input
+}
+
+
+construct_filename_datainfo <- function(
+    prefix, subjlist, glmname, roiset, prewh, base_dir = here::here("out", "parcellated")
+    ) {
+    paste0(
+        base_dir, .Platform$file.sep, "datainfo-", prefix, "__subjlist-", subjlist, "__glm-", glmname,
+        "__roiset-", roiset, "__prewh-", prewh, ".csv"
+    )
+}
+
+
+parse_dset_name <- function(
+    x, nms = c("prefix", "subj", "wave", "session", "run", "roiset", "roi", "glm", "prewh")
+    ) {
+    tidyr::separate(x, name, nms, sep = "__")
+}
+
+read_dset <- function(file_name, dset_name, read_colnames = TRUE) {
+    mat <- rhdf5::h5read(file_name, dset_name, read.attributes = TRUE)
+    if (read_colnames) {
+        colnames(mat) <- attr(mat, "colnames")
+        attr(mat, "colnames") <- NULL
+    }
+    mat
+}
+
+
+read_rdms <- function(
+    .measure, .glmname, .roiset, .prewh, .subjects, .session, .waves,
+    .ttypes1 = ttypes_by_run[[.session]]$run1, 
+    .ttypes2 = ttypes_by_run[[.session]]$run2, 
+    .rois = names(atlas$rois)
+    ) {
+    stopifnot(length(.ttypes1) == length(.ttypes2))
+    on.exit(rhdf5::h5closeAll())
+
+    n_ttype <- length(.ttypes1)
+    n_sub <- length(.subjects)
+    n_wav <- length(.waves)
+    n_roi <- length(.rois)
+
+    A <- array(
+        NA, 
+        dim = c(n_ttype, n_ttype, n_roi, n_sub, n_wav),
+        dimnames = list(dim1 = .ttypes1, dim2 = .ttypes2, roi = .rois, subject = .subjects, wave = .waves)
+        )
+    
+    fname <- construct_filename_rdm(measure = .measure, glmname = .glmname, roiset = .roiset, prewh = .prewh)
+    fid <- rhdf5::H5Fopen(fname)
+    for (.subject in .subjects) {
+        for (.wave in .waves) {
+            dset_name <- paste0(.subject, "__", .wave, "__", .session)
+            did <- rhdf5::H5Dopen(fid, dset_name)
+            A[, , , .subject, .wave] <- rhdf5::H5Dread(did)
+            rhdf5::H5Dclose(did)
+        }
+    }
+    
+
+    A
+
+}
+
+
+
+## resampling functions
+
+
+resample <- function(x, ...) x[sample.int(length(x), ...)]  ## NB: see ?sample()
+
+get_resampled_idx <- function(conditions, n_resamples, expected_min, seed = 0) {
+    stopifnot(is.character(conditions) || is.numeric(n_resamples) || is.numeric(expected_min))
+    set.seed(seed)
+
+    n_conditions <- length(conditions)
+    groups_list <- split(seq_along(conditions), conditions)
+    resample_to <- Reduce(min, lapply(groups_list, length))
+    if (resample_to != expected_min) stop("unexpected minimum n trials")
+    
+    t(replicate(n_resamples, unlist(lapply(groups_list, resample, size = resample_to))))
+
+}
+
+resample_apply_combine <- function(
+    x, resample_idx,
+     apply_fun = identity, 
+     combine_fun = function(.x) Reduce("+", .x) / length(.x)
+     ) {
+    stopifnot(is.matrix(x) || is.matrix(resample_idx))
+
+    n_resamples <- nrow(resample_idx)
+    res <- vector("list", n_resamples)
+    for (ii in seq_len(n_resamples)) {
+        idx <- resample_idx[ii, ]
+        xii <- x[, idx, drop = FALSE]
+        res[[ii]] <- apply_fun(xii)
+    }
+
+    combine_fun(res)
+
+}

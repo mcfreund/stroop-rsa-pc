@@ -1,0 +1,17 @@
+run1,blackBLACK,blackGREEN,blackPINK,blackYELLOW,greenBLACK,greenGREEN,greenPINK,greenYELLOW,pinkBLACK,pinkGREEN,pinkPINK,pinkYELLOW,yellowBLACK,yellowGREEN,yellowPINK,yellowYELLOW
+blackBLACK,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+blackGREEN,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0
+blackPINK,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0
+blackYELLOW,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0
+greenBLACK,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0
+greenGREEN,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+greenPINK,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0
+greenYELLOW,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0
+pinkBLACK,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0
+pinkGREEN,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0
+pinkPINK,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+pinkYELLOW,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0
+yellowBLACK,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0
+yellowGREEN,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0
+yellowPINK,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0
+yellowYELLOW,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0

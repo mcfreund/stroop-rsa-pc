@@ -1,0 +1,11 @@
+run1,blackBLACK,blackGREEN,greenGREEN,greenPINK,greenYELLOW,pinkBLACK,pinkPINK,yellowBLACK,yellowPINK,yellowYELLOW
+blackBLACK,0,0,0,0,0,0,0,0,0,0
+blackPINK,0,1,0,1,1,1,0,1,1,0
+blackYELLOW,0,1,0,1,1,1,0,1,1,0
+greenBLACK,0,1,0,1,1,1,0,1,1,0
+greenGREEN,0,0,0,0,0,0,0,0,0,0
+pinkGREEN,0,1,0,1,1,1,0,1,1,0
+pinkPINK,0,0,0,0,0,0,0,0,0,0
+pinkYELLOW,0,1,0,1,1,1,0,1,1,0
+yellowGREEN,0,1,0,1,1,1,0,1,1,0
+yellowYELLOW,0,0,0,0,0,0,0,0,0,0
