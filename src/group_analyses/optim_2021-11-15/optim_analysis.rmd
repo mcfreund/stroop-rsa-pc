@@ -11,15 +11,18 @@ params:
 
 library(colorout)
 library(here)
+library(data.table)
+source(here("src", "stroop-rsa-pc.R"))
+#render_report("optim_analysis", src_dir = "group_analyses/optim_2021-11-15", params = list(subjlist = "ispc_retest"))
+#render_report("optim_analysis", src_dir = "group_analyses/optim_2021-11-15", params = list(subjlist = "all_retest"))
+
 library(knitr)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(ggridges)
-library(data.table)
 library(abind)
 library(httpgd)
-source(here("src", "stroop-rsa-pc.R"))
 
 ## settings
 hgd()
@@ -38,6 +41,27 @@ prewhs <- c("none", "obsall")
 glms <- c("lsall_1rpm", "lssep_1rpm")
 roiset <- "Schaefer2018Dev"
 measures <- c("cveuc", "crcor")
+subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
+atlas <- read_atlas(roiset)
+
+## read subject RDMs:
+
+rdm <- enlist(combo_paste(measures, prewhs, sep = "__"))
+for (prewh in prewhs) {
+    for (measure in measures) {
+        rdm[[paste0(measure, "__", prewh)]] <- read_rdms(
+            .measure = measure, .prewh = prewh,
+            .glmname = "lsall_1rpm", .roiset = roiset, .waves = waves,
+            .session = session, .subjects = subjects,
+            .ttypes1 = intersect(ttypes_by_run[[session]]$run1, ttypes[["bias"]]),
+            .ttypes2 = intersect(ttypes_by_run[[session]]$run2, ttypes[["bias"]]),
+            .rois = names(atlas$rois)
+            )
+    }
+}
+
+
+## read regression weights:
 
 dat <- enlist(combo_paste(measures, glms, sep = "__"))
 for (measure in measures) {
@@ -83,14 +107,59 @@ dat_r <- dat %>%
 
 ```{r fig.show = "hold", out.width = "50%"}
 for (mod in models$crcor) {
-    rdm <- 
+    rdm_models <- 
         read_model_rdm(
             model = mod, measure_type = "similarity", session = session, ttype_subset = "bias"
         )
-    p <- rdm %>% melt_mat %>% plot_melted_mat + labs(title = mod) + theme(axis.text.x = element_text(angle = 90, hjust = 0))
+    p <- rdm_models %>% melt_mat %>% plot_melted_mat + labs(title = mod) + theme(axis.text.x = element_text(angle = 90, hjust = 0))
     print(p)
 }
 ```
+
+### RDMs
+
+```{r fig.width = 10}
+rdm_crcor_none <- rdm$crcor__none[, , c("Vis", "SomMot", "core32", "LH_Cont_PFCl_6", "LH_Cont_Par_6"), , ]
+
+apply(atanh(rdm_crcor_none), c("dim1", "dim2", "roi", "wave"), mean) %>%
+    tanh %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "group mean matrices: non-prewhitened")
+
+rdm_crcor_none[, , , 1, ] %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "single-subject matrices: non-prewhitened")
+
+
+rdm_crcor_obsall <- rdm$crcor__obsall[, , c("Vis", "SomMot", "core32", "LH_Cont_PFCl_6", "LH_Cont_Par_6"), , ]
+apply(atanh(rdm_crcor_obsall), c("dim1", "dim2", "roi", "wave"), mean) %>%
+    tanh %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "group mean matrices: prewhitened")
+
+rdm_crcor_obsall[, , , 1, ] %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "single-subject matrices: prewhitened")
+
+```
+
+
 
 ### group stats
 
@@ -259,7 +328,7 @@ dat_r %>%
 
 dat_sum %>%
     full_join(dat_r) %>%
-    filter(measure == "crcor", term %in% c("target", "distractor", "incongruency"), prewh == "none") %>%
+    filter(measure == "crcor", term %in% c("conjunction", "distractor", "incongruency", "target"), prewh == "none") %>%
     pivot_wider(names_from = c("glmname"), values_from = c("t_stat", "p", "r")) %>%
     filter(p_lsall_1rpm < 0.01 | p_lssep_1rpm < 0.01) %>%
     arrange(-t_stat_lsall_1rpm) %>%
@@ -270,7 +339,7 @@ dat_sum %>%
 ```{r}
 dat_sum %>%
     full_join(dat_r) %>%
-    filter(measure == "crcor", term %in% c("target", "distractor", "incongruency"), prewh == "obsall") %>%
+    filter(measure == "crcor", term %in% c("conjunction", "distractor", "incongruency", "target"), prewh == "obsall") %>%
     filter(p < 0.01) %>%
     arrange(-t_stat) %>%
     kable
@@ -282,18 +351,65 @@ Sorted by `t_stat_lsall_1rpm`.
 
 
 
-### cross-validated euclidean
+## cross-validated euclidean
 
 
 ```{r fig.show = "hold", out.width = "50%"}
 for (mod in models$cveuc) {
-    rdm <- 
+    rdm_models <- 
         read_model_rdm(
             model = mod, measure_type = "cvdistance", session = session, ttype_subset = "bias"
         )
-    p <- rdm %>% melt_mat %>% plot_melted_mat + labs(title = mod) + theme(axis.text.x = element_text(angle = 90, hjust = 0))
+    p <- rdm_models %>% melt_mat %>% plot_melted_mat + labs(title = mod) + theme(axis.text.x = element_text(angle = 90, hjust = 0))
     print(p)
 }
+```
+
+
+### RDMs
+
+```{r fig.width = 10}
+
+rdm_cveuc_none <- rdm$cveuc__none[, , c("Vis", "SomMot", "core32", "LH_Cont_PFCl_6", "LH_Cont_Par_6"), , ]
+sds <- apply(rdm_cveuc_none, c("roi", "subject", "wave"), function(x) sd(vec(x)))
+rdm_cveuc_none <- sweep(rdm_cveuc_none, 3:5, sds, "/")
+apply(rdm_cveuc_none, c("dim1", "dim2", "roi", "wave"), mean) %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "group mean matrices: non-prewhitened")
+
+rdm_cveuc_none[, , , 1, ] %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "single-subject matrices: non-prewhitened")
+
+
+rdm_cveuc_obsall <- rdm$cveuc__obsall[, , c("Vis", "SomMot", "core32", "LH_Cont_PFCl_6", "LH_Cont_Par_6"), , ]
+sds <- apply(rdm_cveuc_obsall, c("roi", "subject", "wave"), function(x) sd(vec(x)))
+rdm_cveuc_obsall <- sweep(rdm_cveuc_obsall, 3:5, sds, "/")
+apply(rdm_cveuc_obsall, c("dim1", "dim2", "roi", "wave"), mean) %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "group mean matrices: prewhitened")
+
+rdm_cveuc_obsall[, , , 1, ] %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "single-subject matrices: prewhitened")
+
+
 ```
 
 ### group stats
