@@ -8,7 +8,7 @@
 ## Output:
 ##  - ...
 ## Notes:
-##  - ...
+##  - TODO: should probably add handling of vertices with no bold
 ## --------------------------------------------------------------------------------------------------------------------
 
 
@@ -46,7 +46,8 @@ if (interactive()) {
     waves <- c("wave1", "wave2")
     sessions <- "reactive"
     n_cores <- 10
-    ii <- 1
+    ii <- 2#321  ## Vis: 331, SomMot: 341
+    expected_min <- 1
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -80,9 +81,9 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
         S <- CovEst.2010OAS(resids)$S
     } else if (prewh == "obsresamp") {
         S <- resample_apply_combine(
-            x = resids, 
-            resample_idx = get_resampled_idx(conditions = colnames(resids), n_resample, expected_min = 1),
-            apply_fun = function(.x) CovEst.2010OAS(.x)$S
+            x = t(resids), 
+            resample_idx = get_resampled_idx(conditions = rownames(resids), n_resample, expected_min = expected_min),
+            apply_fun = function(.x) CovEst.2010OAS(t(.x))$rho
             )
     }
     W <- sqrtm(S)$Binv  ## sqrt of inverse
