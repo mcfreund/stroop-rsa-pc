@@ -117,27 +117,35 @@ enlist <- function(nms) setNames(vector("list", length(nms)), nms)
 ## wrangling RDMs
 
 
-melt_mat <- function(x, ...) {
+melt_mat <- function(x, col = 1, ...) {
   ## a wrapper for reshape2::melt(), which converts matrices to long-form data.frames.
   ## useful for subsequently plotting matrices with ggplot2().
-  stopifnot(length(dim(x)) == 2)  ## check that it's a matrix or something similar
+  stopifnot(is.array(x))  ## check that it's a matrix or something similar
+  #stopifnot(length(dim(x)) == 2)  ## check that it's a matrix or something similar
   m <- reshape2::melt(x, ...)  ## from reshape2 package. nice b/c converts dimnames of matrix into columns.
-  m[[1]] <- factor(m[[1]], levels = rev(unique(m[[1]])))  ## reverse one factor's levels so diag is topL->bottomR
+  m[[col]] <- factor(m[[col]], levels = rev(unique(m[[col]])))  ## reverse one factor's levels so diag is topL->bottomR
   m
 }
 
-plot_melted_mat <- function(x, .row = "Var1", .col = "Var2", .value = "value") {
+plot_melted_mat <- function(x, .row = "Var1", .col = "Var2", .value = "value",
+    rotate_xaxis_text = TRUE, add_greyscale_gradient = TRUE, geom = "raster") {
   ## a convenience function that plots numeric matrices with sensible defaults. 
   ## that takes a dataframe x, possibly the output of melt_mat(), as input, along with
   ## three strings .row, .col, .value, that indicate the names of the associated columns in the data.frame.
   ## the default arguments are set to work with the labels that reshape2::melt() uses when names(dimnames(x)) 
   ## are not set.
   stopifnot(is.data.frame(x) && is.character(.row) && is.character(.col) && is.character(.value))
-  x %>%
+  p <- x %>% 
     ggplot2::ggplot(aes_string(.col, .row, fill = .value)) +
-    ggplot2::geom_tile(color = "grey50") +
-    ggplot2::scale_fill_gradient(low = "black", high = "white") +
     ggplot2::scale_x_discrete(position = "top")
+  if (geom == "raster") {
+      p <- p + ggplot2::geom_raster()
+  } else if (geom == "tile") {
+      p <- p + ggplot2::geom_tile(color = "grey50")
+  }
+  if (rotate_xaxis_text) p <- p + ggplot2::theme(axis.text.x = element_text(angle = 90, hjust = 0))
+  if (add_greyscale_gradient) p <- p + ggplot2::scale_fill_gradient(low = "black", high = "white")
+  p
 }
 
 
