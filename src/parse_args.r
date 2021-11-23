@@ -11,3 +11,4 @@ if ("n_cores" %in% names(args)) n_cores <- as.numeric(args$n_cores)  ## optional
 if ("prewh" %in% names(args)) prewh <- args$prewh
 if ("measure" %in% names(args)) measure <- args$measure
 if ("ttype_subset" %in% names(args)) ttype_subset <- args$ttype_subset
+if ("expected_min" %in% names(args)) expected_min <- args$expected_min

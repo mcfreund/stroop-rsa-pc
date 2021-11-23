@@ -65,8 +65,10 @@ done
 ## - lsall_1rpm only
 ## - first with obsall (defensible and simple)
 
-prewh="obsall"
+#prewh="obsall"
+prewh="obsresampbias"
 glmname="lsall_1rpm"
+expected_min=6
 Rscript ./src/4_rsa/prewhiten_coefs.r \
     --glmname $glmname \
     --roiset $roiset \
@@ -74,7 +76,8 @@ Rscript ./src/4_rsa/prewhiten_coefs.r \
     --waves $waves \
     --sessions $sessions \
     --prewh $prewh \
-    --n_cores 26
+    --n_cores 26 \
+    --expected_min $expected_min
 
 for measure in ${measures[@]}
 do

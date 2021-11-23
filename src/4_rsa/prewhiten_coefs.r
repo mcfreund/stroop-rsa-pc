@@ -40,14 +40,14 @@ n_resample <- 1E4
 if (interactive()) { 
     glmname <- "lsall_1rpm"
     roiset <- "Schaefer2018Dev"
-    prewh <- "obsall"  ## obsresamp, obsall
+    prewh <- "obsresampbias"  ## obsresamp, obsall, obsresampbias
     subjlist <- "ispc_retest"
     subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
     waves <- c("wave1", "wave2")
     sessions <- "reactive"
     n_cores <- 10
     ii <- 2#321  ## Vis: 331, SomMot: 341
-    expected_min <- 1
+    expected_min <- 6
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -83,7 +83,14 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
         S <- resample_apply_combine(
             x = t(resids), 
             resample_idx = get_resampled_idx(conditions = rownames(resids), n_resample, expected_min = expected_min),
-            apply_fun = function(.x) CovEst.2010OAS(t(.x))$rho
+            apply_fun = function(.x) CovEst.2010OAS(t(.x))$S
+            )
+    } else if (prewh == "obsresampbias") {
+        resids <- resids[rownames(resids) %in% ttypes$bias, ]
+        S <- resample_apply_combine(
+            x = t(resids), 
+            resample_idx = get_resampled_idx(conditions = rownames(resids), n_resample, expected_min = expected_min),
+            apply_fun = function(.x) CovEst.2010OAS(t(.x))$S
             )
     }
     W <- sqrtm(S)$Binv  ## sqrt of inverse
