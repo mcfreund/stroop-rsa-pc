@@ -35,7 +35,7 @@ hgd()
 ## set variables
 
 task <- "Stroop"
-n_resample <- 1E4
+n_resample <- 1E2
 
 if (interactive()) { 
     glmname <- "lsall_1rpm"
@@ -48,6 +48,7 @@ if (interactive()) {
     n_cores <- 10
     ii <- 2#321  ## Vis: 331, SomMot: 341
     expected_min <- 6
+    overwrite <- FALSE
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -65,7 +66,16 @@ input <- construct_filenames_h5(
     glmname = glmname, prewh = "none"
 )
 
-cl <- makeCluster(n_cores, type = "FORK")
+## option to skip if dset already exists (not overwrite):
+if (!overwrite) {
+    dset_name_new <- gsub("prewh-none", paste0("prewh-", prewh), input$dset_name)
+    file_ls <- mclapply(input$file_name, h5ls, mc.cores = 20)
+    dset_exists <- mapply(function(x, y) x %in% y$name, x = dset_name_new, y = file_ls)
+    input <- input[!dset_exists, ]
+}
+
+
+cl <- makeCluster(n_cores, type = "FORK", outfile = "")
 registerDoParallel(cl)
 res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
     

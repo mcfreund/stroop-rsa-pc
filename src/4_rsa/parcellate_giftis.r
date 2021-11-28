@@ -10,9 +10,10 @@
 ##  - vertex by observation (e.g., trial, trialtype) data matrices of coefficients from first-level GLM.
 ##    one matrix per subj*wave*session*(run*task)*roi.
 ##    saved in HDF5 format (.h5) within hidden directory out/parcellated/.d
-##  - master.h5 file in out/parcellated that contains external (soft) links to each h5 dataset in .d/
+##  - data_info file in out/parcellated that contains file_name and dset_name for each dataset
 ## Notes:
-##  - dataset links in master.h5 file cannot be modified once created?
+##  - removes n-dim B-coefficient vectors (where n is n_vertex) that are all zero (corresponding to all-zero columns 
+##    in the time-series design matrix)
 ## --------------------------------------------------------------------------------------------------------------------
 
 
@@ -38,7 +39,7 @@ source(here("src", "stroop-rsa-pc.R"))
 task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
-    glmname <- "lsall_1rpm"
+    glmname <- "condition_1rpm"
     roiset <- "Schaefer2018Dev"
     subjlist <- "ispc_retest"
     subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]][1:5]
@@ -54,9 +55,11 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
 if (glmname == "lssep_1rpm") {
     suffix <- ".gii"
     pattern <- NULL
-} else if (glmname == "lsall_1rpm") {
+} else if (glmname %in% c("lsall_1rpm", "condition_1rpm")) {
     suffix <- "_REML.func.gii"
     pattern <- "_Coef"
+} else {
+    stop("not configured for provided glmname")
 }
 tinfo <- read_trialinfo()[subj %in% subjects & wave %in% waves & session %in% sessions]
 setkey(tinfo, subj, wave, session, run)  ## for quick subsetting within loop below
@@ -85,12 +88,14 @@ res <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
     run <- unique(input_val$run)
     run_i <- as.numeric(gsub("run", "", run))
     tlabels <- tinfo[.(sub, wav, ses, run_i), item]  ## get trialtypes
-    
+    if (glmname == "condition_1rpm") tlabels <- c(ttypes$bias, ttypes$pc50)
+        
     giftis <- lapply(input_val$filename, read_gifti)
     parcs <- 
         giftis %>%
         concat_hemis(input_val$hemi, pattern = pattern) %>% ## extract data and concatenate
-        rename_dim(tlabels) %>%  ## add trialtypes to colnames
+        rename_dim(tlabels) %>% ## add trialtypes to colnames
+        .[, Var(., 2) != 0L] %>%  ## filter regressors that are all zero
         parcellate_data(atlas) ## split matrix into list of length n_roi
     nms <- Map(
         function(x, y, ...) write_dset(mat = x, roi = y, ...), 
