@@ -1,0 +1,45 @@
+---
+title: "assessing bias of RSA methods"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 2
+        toc_float: true
+        number_sections: true
+        df_print: paged
+        code_folding: hide
+---
+
+
+
+
+# The basic model 
+
+
+An fMRI timeseries of $t \in 1, ..., T$ TRs, within a region of interest of $v \in 1, ..., V$ vertices, modulated by $p \in 1, ..., P$ predictors or conditions,
+is given via the sum
+$$\mathbf{Y}_{t\times v} = \mathbf{X}_{t\times p}\mathbf{B}_{p\times v} + \mathbf{E}_{t\times v}$$
+
+Each vertex's true profile of activation over $P$ conditions is generated
+$$\mathbf{B}_v \sim N(\mu_p, \Sigma_{p\times p})$$
+
+These activation patterns are projected into a timeseries by multiplying them with the design matrix $\mathbf{X}_{t\times p}$,
+which was built from the stimulus presentation times via the AFNI function _3dDeconvolve_.
+
+In the basic model, $\mu = \mathbf{0}$, that is, no condition is associated with increased/decreased region-wide activity.
+$\Sigma$, the true similarity structure, is constructed as a weighted sum of a set of symmetric matrices
+$$\Sigma = \sum_{m\in M} a_m\cdot \mathbf{M}(m)$$
+where elements $m$ of the set $M=\{\text{baseline, diagonal, distractor, incongruency, target}\}$ index the component matrices $\mathbf{M}(m)$, and are defined further below.
+The $a_m$ are scaled such that the diagonal elements of $\Sigma$ are equal to 1.
+
+The basic model assumes spatiotemporally uncorrelated error
+$$\mathbf{E}_{t,v} \sim N(0, \Phi)$$
+where
+$$\Phi = 1/\sqrt{r}$$
+so that $r$ defines the signal-to-noise ratio of variance among conditions in $\Sigma$ (signal) to variance with respect to conditions in $\Phi$ (noise).
+
+Under these simple assumptions (and some slightly more complex), it will be assessed whether RSA methods can recover the true similarity structure $\Sigma$ and the true set of weights $\hat a$.
+
+Within a given simulation ("experiment"), true activity patterns $\mathbf{B}$ and errors $\mathbf{E}$ are generated anew for each subject $s \in 1, ..., S$, while distributional parameters ($a$, $r$) are fixed.
+Across different simulations, these distributional parameters may be varied over a grid.
+
