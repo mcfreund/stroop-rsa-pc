@@ -380,7 +380,7 @@ read_model_xmat <- function(
         mods[[mod]] <- read_model_rdm(
             model = mod, 
             measure_type = switch(measure, crcor = "similarity", cveuc = "cvdistance"),
-            session = sessions,
+            session = session,
             ttype_subset = ttype_subset
             )
     }
