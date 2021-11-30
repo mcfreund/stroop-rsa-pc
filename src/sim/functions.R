@@ -135,14 +135,19 @@ simulate_experiments <- function(
 
             }
 
-            Dhat <- estimate_distances(Bhat, "cveuc")
-            ahat <- regress_distances(Dhat, Q_dis, "cveuc", "cveuc")
-            ahat <- melt(ahat, id.vars = "term")
+            ahat <-
+                Bhat %>%
+                estimate_distances("cveuc") %>%
+                regress_distances(Q_dis, "cveuc") %>%
+                melt(id.vars = "term")
 
             if (est_crcor) {
-                Shat <- estimate_distances(Bhat, "crcor", n_resamples = n_resamples, expected_min = .expected_min)
-                ahat_sim <- regress_distances(Shat, Q_sim, "crcor", "crcor")
-                ahat <- rbind(melt(ahat_sim, id.vars = "term"), ahat)
+                ahat_sim <-
+                    Bhat %>%
+                    estimate_distances("crcor", n_resamples = n_resamples, expected_min = .expected_min) %>%
+                    regress_distances(Q_sim, "crcor") %>%
+                    melt(id.vars = "term")
+                ahat <- rbind(ahat_sim, ahat)
             }
 
             ahat
