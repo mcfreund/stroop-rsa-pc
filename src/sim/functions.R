@@ -107,6 +107,8 @@ simulate_experiments <- function(
         foreach(subj_i = seq_along(subjects), .final = function(x) setNames(x, subjects), .inorder = TRUE) %:% 
         foreach(experiment_i = seq_len(.n_experiments), .inorder = FALSE) %dopar% {
 
+            set.seed((subj_i-1)*.n_experiments + experiment_i)  ## uniqe seed per subject and experiment
+
             sub <- subjects[subj_i]
             X <- X_list[[subj_i]]
             Z <- Z_list[[subj_i]]
