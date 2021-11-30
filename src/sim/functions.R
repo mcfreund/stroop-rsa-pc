@@ -120,7 +120,7 @@ simulate_experiments <- function(
                 ## generate timeseries Y
                 
                 t <- nrow(X[[run_i]])  ## n tr (after censoring)
-                E <- matrix(rnorm(.v*t, sd = sqrt(.r)), ncol = .v)
+                E <- matrix(rnorm(.v*t, sd = 1/.r), ncol = .v)
                 Y <- X[[run_i]] %*% B + E
 
                 ## estimate coefficients Bhat

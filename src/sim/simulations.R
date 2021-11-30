@@ -27,8 +27,9 @@ Mvec <- create_M(ttypes$all)  ## components of true similarity structure
 mu <- rep(0, p)  ## true mean activations
 v <- 100  ## number vertices
 n_resamples <- 1E2  ## for crcor
-r <- seq(1E-6, 1, 1/4)  ## SNRs
- 
+r <- 10^-c(6, 3:0)  ## SNRs
+
+
 ## read all design matrices into nested list:
 
 X_master <- enlist(sessions)
@@ -50,14 +51,13 @@ for (session in sessions) {
 
 ## false positive simulations ----
 
+
 params <- expand.grid(
-    ttype_subset = "bias", #c("bias", "pc50", "all"),
-    ses = "reactive",
+    ttype_subset = names(ttypes),
+    ses = sessions,
     r = r,
     stringsAsFactors = FALSE
 )
-a <- c(1, 0, 0, 0, 0)  ## true model weights
-sigma <- matrix(Mvec %*% a, ncol = p, nrow = p, dimnames = list(ttypes$all, ttypes$all))  ## true geometry
 
 beg <- Sys.time()
 dat <- vector("list", nrow(params))
@@ -66,6 +66,7 @@ for (param_i in seq_len(nrow(params))) {
     
     ttype_subset <- params$ttype_subset[param_i]
     ses <- params$ses[param_i]
+    .r <- params$r[param_i]
 
     result <- simulate_experiments(
         X_list = X_master[[ses]], 
@@ -74,9 +75,9 @@ for (param_i in seq_len(nrow(params))) {
         Q_dis = Q_dis_master[[ses]][[ttype_subset]],
         .ses = ses,
         .ttype_subset = ttype_subset,
-        .r = params$r[param_i]
+        .r = .r
     )
-    
+
     ## save
     
     result$session <- ses
@@ -89,3 +90,6 @@ for (param_i in seq_len(nrow(params))) {
 false_positive <- rbindlist(dat)
 end <- Sys.time()
 (end - beg)
+## 4.56 minutes for nrow(params)=5, n_experiments=100, n_cores=26, n_resamples=100
+
+saveRDS(false_positive, here("out", "sim", "false_positive.RDS"))
