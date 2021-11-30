@@ -98,17 +98,19 @@ simulate_experiments <- function(
 
     ## simulation loop:
 
+    set.seed(0)
+    B_array <- replicate(length(subjects), t(MASS::mvrnorm(n = .v, mu = .mu, Sigma = .sigma)))  ## create betas  
+    
     cl <- makeCluster(.n_cores, type = "FORK")
-    dat <- enlist(subjects)
-    for (subj_i in seq_along(subjects)) {
+    registerDoParallel(cl)
+    res <- 
+        foreach(subj_i = seq_along(subjects), .final = function(x) setNames(x, subjects), .inorder = TRUE) %:% 
+        foreach(experiment_i = seq_len(.n_experiments), .inorder = FALSE) %dopar% {
         
         sub <- subjects[subj_i]
         X <- X_list[[subj_i]]
         Z <- Z_list[[subj_i]]
-        B <- t(MASS::mvrnorm(n = .v, mu = .mu, Sigma = .sigma))
-        
-        registerDoParallel(cl)
-        res <- foreach(experiment_i = seq_len(.n_experiments)) %dopar% {
+            B <- B_array[, , subj_i]
 
             Bhat <- enlist(runs)
             for (run_i in 1:2) {
@@ -128,7 +130,7 @@ simulate_experiments <- function(
                 if (glmname == "condition_1rpm") tlabels <- c(ttypes$bias, ttypes$pc50)
                 colnames(Bhat_i) <- tlabels
 
-                ttypes_to_get <- intersect(ttypes_by_run[[.ses]][[run_i]], ttypes[[.ttype_subset]])  ## extract trialtypes
+                ttypes_to_get <- intersect(ttypes_by_run[[.ses]][[run_i]], ttypes[[.ttype_subset]])  ## extract ttypes
                 Bhat_i <- Bhat_i[, colnames(Bhat_i) %in% ttypes_to_get]
 
                 Bhat[[run_i]] <- Bhat_i
@@ -155,11 +157,9 @@ simulate_experiments <- function(
         }
         stopImplicitCluster()
 
-        dat[[subj_i]] <- rbindlist(res, id = "experiment")
+    res_unnested <- lapply(res, rbindlist, id = "experiment")
 
-    }
-
-    rbindlist(dat, id = "subj")
+    rbindlist(res_unnested, id = "subj")
 
 }
 
