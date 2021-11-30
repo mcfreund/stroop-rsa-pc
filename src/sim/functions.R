@@ -97,19 +97,19 @@ simulate_experiments <- function(
     setkey(tinfo, subj, run)  ## for quick subsetting within loop below
 
     ## simulation loop:
-
+    
     set.seed(0)
     B_array <- replicate(length(subjects), t(MASS::mvrnorm(n = .v, mu = .mu, Sigma = .sigma)))  ## create betas  
     
-    cl <- makeCluster(.n_cores, type = "FORK")
+    cl <- makeCluster(.n_cores, type = "FORK")        
     registerDoParallel(cl)
     res <- 
         foreach(subj_i = seq_along(subjects), .final = function(x) setNames(x, subjects), .inorder = TRUE) %:% 
         foreach(experiment_i = seq_len(.n_experiments), .inorder = FALSE) %dopar% {
-        
-        sub <- subjects[subj_i]
-        X <- X_list[[subj_i]]
-        Z <- Z_list[[subj_i]]
+
+            sub <- subjects[subj_i]
+            X <- X_list[[subj_i]]
+            Z <- Z_list[[subj_i]]
             B <- B_array[, , subj_i]
 
             Bhat <- enlist(runs)
@@ -136,7 +136,7 @@ simulate_experiments <- function(
                 Bhat[[run_i]] <- Bhat_i
 
             }
-
+            
             ahat <-
                 Bhat %>%
                 estimate_distances("cveuc") %>%
@@ -149,16 +149,16 @@ simulate_experiments <- function(
                     estimate_distances("crcor", n_resamples = n_resamples, expected_min = .expected_min) %>%
                     regress_distances(Q_sim, "crcor") %>%
                     melt(id.vars = "term")
-                ahat <- rbind(ahat_sim, ahat)
+                ahat <- rbind(melt(ahat_sim, id.vars = "term"), ahat)
             }
 
             ahat
 
-        }
-        stopImplicitCluster()
+    }
+    stopImplicitCluster()
 
     res_unnested <- lapply(res, rbindlist, id = "experiment")
-
+    
     rbindlist(res_unnested, id = "subj")
 
 }
