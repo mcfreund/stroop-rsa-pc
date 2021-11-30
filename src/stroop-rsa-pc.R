@@ -82,6 +82,18 @@ models <- list(
     cveuc = c("distractor", "incongruency", "target"),
     crcor = c("conjunction", "distractor", "incongruency", "target")
 )
+## minimum number >0 of trials per ttype (for crcor):
+expected_min <- list(
+    reactive_bias = 6,
+    reactive_pc50 = 1,
+    reactive_all = 1,
+    proactive_bias = 3,
+    proactive_pc50 = 3,
+    proactive_all = 3,
+    baseline_bias = 3,
+    baseline_pc50 = 3,
+    baseline_all = 3
+)
 
 ## :: analytic info (expected values)
 
