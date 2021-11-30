@@ -120,7 +120,7 @@ simulate_experiments <- function(
                 ## generate timeseries Y
                 
                 t <- nrow(X[[run_i]])  ## n tr (after censoring)
-                E <- matrix(rnorm(.v*t, sd = sqrt(r)), ncol = .v)
+                E <- matrix(rnorm(.v*t, sd = sqrt(.r)), ncol = .v)
                 Y <- X[[run_i]] %*% B + E
 
                 ## estimate coefficients Bhat
@@ -151,7 +151,7 @@ simulate_experiments <- function(
                     estimate_distances("crcor", n_resamples = n_resamples, expected_min = .expected_min) %>%
                     regress_distances(Q_sim, "crcor") %>%
                     melt(id.vars = "term")
-                ahat <- rbind(melt(ahat_sim, id.vars = "term"), ahat)
+                ahat <- rbind(ahat_sim, ahat)
             }
 
             ahat
