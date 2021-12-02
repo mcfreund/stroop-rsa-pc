@@ -21,13 +21,13 @@ subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
 glmname <- "lsall_1rpm"
 wav <- "wave1"
 n_experiments <- 100  ## number simulations per subject
-n_cores <- 26
+n_cores <- 30
 p <- length(ttypes$all)
 Mvec <- create_M(ttypes$all)  ## components of true similarity structure
 mu <- rep(0, p)  ## true mean activations
 v <- 100  ## number vertices
 n_resamples <- 1E2  ## for crcor
-r <- 10^-c(6, 3:0)  ## SNRs
+r <- 10^-c(4:-1)  ## SNRs
 
 
 ## read xmats ----
@@ -77,7 +77,51 @@ for (ses in sessions) {
 
 
 
+
 ## false positive simulations ----
+
+a <- c(1, 0, 0, 0, 0)  ## true model weights
+sigma <- matrix(Mvec %*% a, ncol = p, nrow = p, dimnames = list(ttypes$all, ttypes$all))  ## true geometry
+params <- expand.grid(
+    ttype_subset = c("pc50", "bias"), #names(ttypes),
+    ses = sessions,
+    r = r,
+    stringsAsFactors = FALSE
+)
+
+beg <- Sys.time()
+dat <- vector("list", nrow(params))
+for (param_i in seq_len(nrow(params))) {
+    # param_i = 10
+    
+    ttype_subset <- params$ttype_subset[param_i]
+    ses <- params$ses[param_i]
+
+    result <- simulate_experiments(
+        .X_list = xmat_condition_master[[ses]], 
+        .Z_list = xmat_lsall_master[[ses]], 
+        .Q_dis  = xmat_dist_master[[ses]][[ttype_subset]],
+        .Q_sim  = xmat_simil_master[[ses]][[ttype_subset]], 
+        .ttype_subset = ttype_subset,
+        .r = params$r[param_i]
+    )
+
+    ## save
+    
+    result$session <- ses
+    result$ttype_subset <- ttype_subset
+    result$r <- params$r[param_i]
+
+    dat[[param_i]] <- result
+    
+    print(param_i)
+
+}
+false_positive <- rbindlist(dat)
+end <- Sys.time()
+(end - beg)
+
+saveRDS(false_positive, here("out", "sim", paste0("false_positive_", wav, ".RDS")))
 
 
 params <- expand.grid(

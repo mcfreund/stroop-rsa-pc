@@ -1,15 +1,23 @@
-read_design <- function(subject, session, wave, glmname, run_i, signal_only) {
-
+read_design <- function(subject, session, wave, glmname, run_i) {
     dir_xmat <- here::here("out", "glms", subject, wave, "RESULTS/Stroop", paste0(session, "_", glmname))
     X <- mikeutils::read_xmat(file.path(dir_xmat, paste0("X.xmat_run", run_i ,".1D")))
     X <- X[rowSums(X) > .Machine$double.eps, ]  ## censor
-    if (signal_only) {
-        idx_baseline <- grep("Pol|movregs", colnames(X))
-        X <- X[, -idx_baseline]  ## extract signal columns
+    X
+}
+
+
+read_designs <- function(subjects, session, wave, glmname) {
+    X <- enlist(subjects)
+    for (sub in subjects) {
+        X[[sub]] <- enlist(runs)
+        for (run_i in 1:2) {
+            X[[sub]][[run_i]] <- read_design(sub, session, wave, glmname, run_i)
+        }
     }
     X
-
 }
+
+
 
 estimate_distances <- function(B, measure, n_resamples, expected_min) {
 
@@ -70,20 +78,23 @@ create_M <- function(ttypes) {
 
 
 simulate_experiments <- function(
-    X_list, Z_list, Q_sim, Q_dis,
-    .glmname = glmname, .ses = ses, .wav = wav, .ttype_subset = ttype_subset, .n_experiments = n_experiments, 
-    .mu = mu, .sigma = sigma, .v = v, .r = r, .n_resamples = n_resamples, 
-    .expected_min = expected_min[paste0(.ses, "_", .ttype_subset)], est_crcor = TRUE, .n_cores = n_cores
+    .X_list, .Q_dis,
+    .Z_list = .X_list, 
+    .Q_sim = NULL,
+    .ttype_subset = ttype_subset, 
+    .n_experiments = n_experiments, 
+    .mu = mu, 
+    .sigma = sigma, 
+    .v = v, 
+    .r = r, 
+    .n_resamples = n_resamples, 
+    .expected_min = expected_min[[paste0(ses, "_", .ttype_subset)]], 
+    .n_cores = n_cores
     ) {
 
-    stopifnot(identical(names(X_list), names(Z_list)))
-    stopifnot(!is.null(names(X_list)))
-    subjects <- names(X_list)
-    
-    ## trial labels
-
-    tinfo <- read_trialinfo()[subj %in% subjects & wave %in% .wav & session %in% .ses]
-    setkey(tinfo, subj, run)  ## for quick subsetting within loop below
+    stopifnot(identical(names(.X_list), names(.Z_list)))
+    stopifnot(!is.null(names(.X_list)))
+    subjects <- names(.X_list)
 
     ## simulation loop:
     
@@ -99,46 +110,45 @@ simulate_experiments <- function(
             set.seed((subj_i-1)*.n_experiments + experiment_i)  ## uniqe seed per subject and experiment
 
             sub <- subjects[subj_i]
-            X <- X_list[[subj_i]]
-            Z <- Z_list[[subj_i]]
+            X <- .X_list[[subj_i]]
+            Z <- .Z_list[[subj_i]]
             B <- B_array[, , subj_i]
 
             Bhat <- enlist(runs)
             for (run_i in 1:2) {
 
+                ## prepare timeseries design matrix
+
+                X_run <- X[[run_i]]
+                X_run <- X_run[, -grep("Pol|movregs", colnames(X_run))]  ## keep only signal regressors
+                
                 ## generate timeseries Y
                 
-                t <- nrow(X[[run_i]])  ## n tr (after censoring)
-                E <- matrix(rnorm(.v*t, sd = 1/.r), ncol = .v)
-                Y <- X[[run_i]] %*% B + E
+                E <- matrix(rnorm(.v*nrow(X_run), sd = 1/.r), ncol = .v)
+                Y <- X_run %*% B[colnames(X_run), ] + E  ## ensure B and X_run dims match
 
                 ## estimate coefficients Bhat
                 
-                idx_signal <- -grep("Pol|movregs", colnames(Z[[run_i]]))
-                Bhat_i <- t(coef(.lm.fit(Z[[run_i]], Y))[idx_signal, ])
+                Z_run <- Z[[run_i]]
+                Bhat_i <- t(coef(.lm.fit(Z_run, Y)))
+                colnames(Bhat_i) <- colnames(Z_run)
 
-                tlabels <- tinfo[.(sub, run_i), item]  ## get trialtypes (add as colnames)
-                if (glmname == "condition_1rpm") tlabels <- c(ttypes$bias, ttypes$pc50)
-                colnames(Bhat_i) <- tlabels
-
-                ttypes_to_get <- intersect(ttypes_by_run[[.ses]][[run_i]], ttypes[[.ttype_subset]])  ## extract ttypes
-                Bhat_i <- Bhat_i[, colnames(Bhat_i) %in% ttypes_to_get]
-
-                Bhat[[run_i]] <- Bhat_i
+                cols_to_keep <- which(colnames(Z_run) %in% ttypes[[.ttype_subset]])
+                Bhat[[run_i]] <- Bhat_i[, cols_to_keep]  ## keep only signal ttype_subset betahats                
 
             }
             
             ahat <-
                 Bhat %>%
                 estimate_distances("cveuc") %>%
-                regress_distances(Q_dis, "cveuc") %>%
+                regress_distances(.Q_dis, "cveuc") %>%
                 melt(id.vars = "term")
 
-            if (est_crcor) {
+            if (!is.null(.Q_sim)) {
                 ahat_sim <-
                     Bhat %>%
                     estimate_distances("crcor", n_resamples = n_resamples, expected_min = .expected_min) %>%
-                    regress_distances(Q_sim, "crcor") %>%
+                    regress_distances(.Q_sim, "crcor") %>%
                     melt(id.vars = "term")
                 ahat <- rbind(ahat_sim, ahat)
             }
