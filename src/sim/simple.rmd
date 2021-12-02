@@ -14,12 +14,10 @@ library(knitr)
 library(ggridges)
 library(foreach)
 library(doParallel)
-library(httpgd)
 source(here::here("src", "stroop-rsa-pc.R"))
 
 opts_chunk$set(echo = TRUE)
 theme_set(theme_bw(base_size = 14))
-hgd()
 
 ```
 
@@ -30,9 +28,8 @@ simulate beta coefficient estimates directly
 
 ```{r}
 
-ttypes <- sort(ttypes)
-target <- gsub("[A-Z]", "", ttypes)
-distractor <- gsub("[a-z]", "", ttypes)
+target <- gsub("[A-Z]", "", ttypes$all)
+distractor <- gsub("[a-z]", "", ttypes$all)
 incongruency <- as.character(target != tolower(distractor))
 conjunction <- paste0(target, distractor)
 
@@ -40,6 +37,8 @@ R_target <- tcrossprod(indicator_matrix(target))
 R_distractor <- tcrossprod(indicator_matrix(distractor))
 R_incongruency <- tcrossprod(cbind(indicator_matrix(incongruency)[, "TRUE"]))
 R_conjunction <- tcrossprod(indicator_matrix(conjunction))
+
+
 
 ttype_subset <- "pc50"
 session <- "reactive"
@@ -53,22 +52,12 @@ S <-
     true_weights[3]*R_incongruency + 
     true_weights[4]*R_target
 
-X_dist <- cbind(
-    intercept = 1,
-    distractor = vec(read_model_rdm(model = "distractor", "cvdistance", session, ttype_subset)), 
-    incongruency = vec(read_model_rdm(model = "incongruency", "cvdistance", session, ttype_subset)),
-    target = vec(read_model_rdm(model = "target", "cvdistance", session, ttype_subset))
-    )
-X_simil <- cbind(
-    intercept = 1,
-    distractor = c(read_model_rdm(model = "distractor", "similarity", session, ttype_subset)), 
-    conjunction = c(read_model_rdm(model = "conjunction", "similarity", session, ttype_subset)),
-    incongruency = c(read_model_rdm(model = "incongruency", "similarity", session, ttype_subset)),
-    target = c(read_model_rdm(model = "target", "similarity", session, ttype_subset))
-    )
+X_dis <- read_model_xmat("cveuc", session, ttype_subset)
+X_sim <- read_model_xmat("cveuc", session, ttype_subset)
+
 
 n_sims <- 1E3
-cl <- makeCluster(20, type = "FORK")
+cl <- makeCluster(1, type = "FORK")
 registerDoParallel(cl)
 res <- foreach(sim_i = seq_len(n_sims), .combine = rbind) %dopar% {
     #sim_i = 1
