@@ -96,6 +96,7 @@ simulate_experiments <- function(
     stopifnot(!is.null(names(.X_list)))
     subjects <- names(.X_list)
 
+    
     ## simulation loop:
     
     set.seed(0)
@@ -103,6 +104,7 @@ simulate_experiments <- function(
     
     cl <- makeCluster(.n_cores, type = "FORK")        
     registerDoParallel(cl)
+    on.exit(stopCluster(cl))
     res <- 
         foreach(subj_i = seq_along(subjects), .final = function(x) setNames(x, subjects), .inorder = TRUE) %:% 
         foreach(experiment_i = seq_len(.n_experiments), .inorder = FALSE) %dopar% {
@@ -156,7 +158,6 @@ simulate_experiments <- function(
             ahat
 
     }
-    stopImplicitCluster()
 
     res_unnested <- lapply(res, rbindlist, id = "experiment")
     
