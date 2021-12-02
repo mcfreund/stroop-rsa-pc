@@ -40,7 +40,8 @@ regress_distances <- function(distances, design, measure, outcome_name = measure
         Y <- d / sd(d)
     } else if (measure == "crcor") {
         d <- c(distances)
-        Y <- atanh(d)  ## Fisher's z transform
+        #Y <- atanh(d)  ## Fisher's z transform
+        Y <- d
     }
 
     Ahat <- coef(.lm.fit(x = design, y = Y))
