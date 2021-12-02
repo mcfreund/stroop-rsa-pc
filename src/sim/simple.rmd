@@ -53,7 +53,7 @@ S <-
     true_weights[4]*R_target
 
 X_dis <- read_model_xmat("cveuc", session, ttype_subset)
-X_sim <- read_model_xmat("cveuc", session, ttype_subset)
+X_sim <- read_model_xmat("crcor", session, ttype_subset)
 
 
 n_sims <- 1E3
