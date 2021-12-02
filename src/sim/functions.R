@@ -41,17 +41,6 @@ regress_distances <- function(distances, design, measure, outcome_name = measure
 }
 
 
-read_designs <- function(subjects, session, wave, glmname, signal_only) {
-    X <- enlist(subjects)
-    for (sub in subjects) {
-        X[[sub]] <- enlist(runs)
-        for (run_i in 1:2) {
-            X[[sub]][[run_i]] <- read_design(sub, session, wave, glmname, run_i, signal_only = signal_only)
-        }
-    }    
-    X
-}
-
 
 create_M <- function(ttypes) {
 

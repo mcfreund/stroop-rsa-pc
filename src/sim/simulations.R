@@ -30,21 +30,49 @@ n_resamples <- 1E2  ## for crcor
 r <- 10^-c(6, 3:0)  ## SNRs
 
 
-## read all design matrices into nested list:
+## read xmats ----
 
-X_master <- enlist(sessions)
-Z_master <- enlist(sessions)
-Q_sim_master <- enlist(sessions)
-Q_dis_master <- enlist(sessions)
-for (session in sessions) {
-    X_master[[session]] <- read_designs(subjects, session, wav, "condition_1rpm", signal_only = TRUE)
-    Z_master[[session]] <- read_designs(subjects, session, wav, glmname, signal_only = FALSE)
-    Q_sim_master[[session]] <- enlist(names(ttypes))
-    Q_dis_master[[session]] <- enlist(names(ttypes))
-    for (ttype_subset in names(ttypes)) {
-        Q_sim_master[[session]][[ttype_subset]] <- read_model_xmat("crcor", session, ttype_subset)
-        Q_dis_master[[session]][[ttype_subset]] <- read_model_xmat("cveuc", session, ttype_subset)
+## read trial orders (for lsall):
+
+tinfo <- read_trialinfo()[subj %in% subjects & wave %in% wav, c("subj", "session", "run", "trial_num", "item")]
+setkey(tinfo, subj, session, run, trial_num)  ## for quick subsetting
+
+
+xmat_condition_master <- enlist(sessions)
+xmat_lsall_master <- enlist(sessions)
+xmat_simil_master <- enlist(sessions)
+xmat_dist_master <- enlist(sessions)
+
+for (ses in sessions) {
+
+    ## load timeseries xmats
+    xmat_condition_master[[ses]] <- read_designs(subjects, ses, wav, "condition_1rpm")
+    xmat_lsall_master[[ses]] <- read_designs(subjects, ses, wav, "lsall_1rpm")
+    
+    ## rename "signal" (stimulus) cols:
+    for (subject in subjects) {
+        for (run_i in 1:2) {
+            
+            nms_lsall <- colnames(xmat_lsall_master[[ses]][[subject]][[run_i]])
+            nms_lsall[grep("alltrials", nms_lsall)] <- tinfo[.(subject, ses, run_i), item]
+            colnames(xmat_lsall_master[[ses]][[subject]][[run_i]]) <- nms_lsall
+
+            nms_condition <- colnames(xmat_condition_master[[ses]][[subject]][[run_i]])
+            nms_condition <- gsub("#0", "", nms_condition)
+            colnames(xmat_condition_master[[ses]][[subject]][[run_i]]) <- nms_condition
+
+        }
     }
+    
+    ## load RSA xmats
+    xmat_simil_master[[ses]] <- enlist(names(ttypes))
+    xmat_dist_master[[ses]] <- enlist(names(ttypes))
+
+    for (ttype_subset in names(ttypes)) {
+        xmat_simil_master[[ses]][[ttype_subset]] <- read_model_xmat("crcor", ses, ttype_subset)
+        xmat_dist_master[[ses]][[ttype_subset]] <- read_model_xmat("cveuc", ses, ttype_subset)
+    }
+
 }
 
 
