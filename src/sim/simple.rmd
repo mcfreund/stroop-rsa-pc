@@ -1,0 +1,171 @@
+---
+title: "simulating RSA results: simple model check"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 2
+        toc_float: true
+        number_sections: false
+        df_print: paged
+        code_folding: hide
+---
+
+
+```{r setup, include = FALSE}
+
+library(colorout)
+library(here)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(data.table)
+library(knitr)
+library(ggridges)
+library(foreach)
+library(doParallel)
+source(here::here("src", "stroop-rsa-pc.R"))
+
+opts_chunk$set(echo = TRUE)
+theme_set(theme_bw(base_size = 14))
+
+
+simulate_weights <- function(
+    session, ttype_subset, S, snr, 
+    p = 100, 
+    n_sims = 1E3, 
+    n_cores = 20,
+    X_dist = read_model_xmat("cveuc", session, ttype_subset), 
+    X_simil = read_model_xmat("crcor", session, ttype_subset)
+    ) {
+
+    cl <- makeCluster(n_cores, type = "FORK")
+    registerDoParallel(cl)
+    on.exit(stopCluster(cl))
+    res <- foreach(sim_i = seq_len(n_sims), .combine = rbind) %dopar% {
+        #sim_i = 1
+        set.seed(sim_i)
+
+        B <- MASS::mvrnorm(n = p, mu = rep(0, nrow(S)), Sigma = S)
+
+        ttypes_run1 <- intersect(ttypes_by_run[[session]]$run1, ttypes[[ttype_subset]])
+        ttypes_run2 <- intersect(ttypes_by_run[[session]]$run2, ttypes[[ttype_subset]])
+        B1 <- B[, ttypes_run1]
+        B2 <- B[, ttypes_run2]
+
+        B1_hat <- B1 + rnorm(p*ncol(B1), sd = 1/snr)
+        B2_hat <- B2 + rnorm(p*ncol(B2), sd = 1/snr)
+
+        D <- cvdist(B1_hat, B2_hat)
+        R <- cor(B1_hat, B2_hat)
+
+        b_simil <- coef(.lm.fit(x = X_simil, y = c(R)))
+        b_dist <- coef(.lm.fit(x = X_dist, y = vec(D)))
+        
+        b_simil <- data.table(
+            b = b_simil, 
+            term = colnames(X_simil),
+            measure = "simil",
+            simulation = sim_i
+            )
+
+        b_dist <- data.table(
+            b = b_dist, 
+            term = colnames(X_dist),
+            measure = "dist",
+            simulation = sim_i
+        )
+
+        rbind(b_simil, b_dist)
+
+    }
+
+    res
+    
+}
+
+
+## build true similarity structures
+
+target <- gsub("[A-Z]", "", ttypes$all)
+distractor <- gsub("[a-z]", "", ttypes$all)
+incongruency <- as.character(target != tolower(distractor))
+conjunction <- paste0(target, distractor)
+
+R_target <- tcrossprod(indicator_matrix(target))
+R_distractor <- tcrossprod(indicator_matrix(distractor))
+R_incongruency <- tcrossprod(cbind(indicator_matrix(incongruency)[, "TRUE"]))
+R_conjunction <- tcrossprod(indicator_matrix(conjunction))
+
+true_similarity_structure <- function(w_distractor, w_conjunction, w_incongruency, w_target) {
+    S <- 
+        w_distractor*R_distractor + 
+        w_conjunction*R_conjunction + 
+        w_incongruency*R_incongruency + 
+        w_target*R_target
+    dimnames(S) <- list(ttypes$all, ttypes$all)
+    S
+}
+
+
+```
+
+
+## parameters
+
+simulate beta coefficient estimates directly
+
+```{r}
+
+n_sims <- 1E3
+ttype_subsets <- c("bias", "pc50")
+
+res <- enlist(paste0(sessions, "_", ttype_subsets))
+for (ses in sessions) {
+    for (ttype_subset in ttype_subsets) {
+        
+        res[[paste0(ses, "_", ttype_subset)]] <- 
+            simulate_weights(
+                session = ses, 
+                ttype_subset = ttype_subset,
+                S = true_similarity_structure(0, 0, 0, 1),
+                snr = 0.1,
+                n_sims = n_sims
+            )
+            
+    }
+}
+d <- rbindlist(res, idcol = "session_subset")
+
+n_subj <- 50
+d %>%
+    mutate(experiment = ntile(simulation, n_sims/n_subj)) %>%
+    group_by(session_subset, measure, term, experiment) %>%
+    summarize(m = mean(b), stat = t.test(b)$statistic) %>%
+    summarize(stat = mean(stat), m = mean(m)) %>%
+
+    ggplot(aes(term, stat, fill = session_subset)) +
+    geom_col(position = position_dodge(width = 1)) +
+    facet_grid(vars(measure), scales = "free_y") +
+    scale_fill_viridis_d()
+
+```
+
+
+# VIFs
+
+```{r}
+library(car)
+
+for (ses in sessions) {
+    for (ttype_subset in ttype_subsets) {
+        
+        X_dist <- read_model_xmat("cveuc", ses, ttype_subset)
+        X_simil <- read_model_xmat("crcor", ses, ttype_subset)
+        
+        vif(lm(1:nrow(X_dist) ~ . - intercept, as.data.frame(X_dist))) %>% print
+        vif(lm(1:nrow(X_simil) ~ . - intercept, as.data.frame(X_simil))) %>% print
+            
+    }
+}
+
+```

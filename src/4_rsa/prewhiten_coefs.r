@@ -8,7 +8,7 @@
 ## Output:
 ##  - ...
 ## Notes:
-##  - ...
+##  - TODO: should probably add handling of vertices with no bold
 ## --------------------------------------------------------------------------------------------------------------------
 
 
@@ -35,18 +35,20 @@ hgd()
 ## set variables
 
 task <- "Stroop"
-n_resample <- 1E4
+n_resample <- 1E2
 
 if (interactive()) { 
     glmname <- "lsall_1rpm"
     roiset <- "Schaefer2018Dev"
-    prewh <- "obsall"  ## obsresamp, obsall
+    prewh <- "obsresampbias"  ## obsresamp, obsall, obsresampbias
     subjlist <- "ispc_retest"
     subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
     waves <- c("wave1", "wave2")
     sessions <- "reactive"
     n_cores <- 10
-    ii <- 1
+    ii <- 2#321  ## Vis: 331, SomMot: 341
+    expected_min <- 6
+    overwrite <- FALSE
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -64,7 +66,16 @@ input <- construct_filenames_h5(
     glmname = glmname, prewh = "none"
 )
 
-cl <- makeCluster(n_cores, type = "FORK")
+## option to skip if dset already exists (not overwrite):
+if (!overwrite) {
+    dset_name_new <- gsub("prewh-none", paste0("prewh-", prewh), input$dset_name)
+    file_ls <- mclapply(input$file_name, h5ls, mc.cores = 20)
+    dset_exists <- mapply(function(x, y) x %in% y$name, x = dset_name_new, y = file_ls)
+    input <- input[!dset_exists, ]
+}
+
+
+cl <- makeCluster(n_cores, type = "FORK", outfile = "")
 registerDoParallel(cl)
 res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
     
@@ -80,9 +91,16 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
         S <- CovEst.2010OAS(resids)$S
     } else if (prewh == "obsresamp") {
         S <- resample_apply_combine(
-            x = resids, 
-            resample_idx = get_resampled_idx(conditions = colnames(resids), n_resample, expected_min = 1),
-            apply_fun = function(.x) CovEst.2010OAS(.x)$S
+            x = t(resids), 
+            resample_idx = get_resampled_idx(conditions = rownames(resids), n_resample, expected_min = expected_min),
+            apply_fun = function(.x) CovEst.2010OAS(t(.x))$S
+            )
+    } else if (prewh == "obsresampbias") {
+        resids <- resids[rownames(resids) %in% ttypes$bias, ]
+        S <- resample_apply_combine(
+            x = t(resids), 
+            resample_idx = get_resampled_idx(conditions = rownames(resids), n_resample, expected_min = expected_min),
+            apply_fun = function(.x) CovEst.2010OAS(t(.x))$S
             )
     }
     W <- sqrtm(S)$Binv  ## sqrt of inverse

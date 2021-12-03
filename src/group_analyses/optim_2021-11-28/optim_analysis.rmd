@@ -1,0 +1,747 @@
+---
+title: "assessing impact of analysis approaches: `r params$subjlist`"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 2
+        toc_float: true
+        number_sections: true
+        df_print: paged
+        code_folding: hide
+params:
+    subjlist: "ispc_retest"
+---
+
+
+```{r setup, results = FALSE, message = FALSE}
+
+## libraries
+
+library(colorout)
+library(here)
+library(data.table)
+source(here("src", "stroop-rsa-pc.R"))
+#render_report("optim_analysis", src_dir = "group_analyses/optim_2021-11-28", params = list(subjlist = "ispc_retest"))
+#render_report("optim_analysis", src_dir = "group_analyses/optim_2021-11-28", params = list(subjlist = "all_retest"))
+
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggridges)
+library(abind)
+
+## settings
+opts_chunk$set(echo = TRUE)
+theme_set(theme_bw(base_size = 10))
+
+## constants
+subjlist <- "all_retest"
+#subjlist <- params$subjlist
+if (subjlist == "ispc_retest") {
+    session <- "reactive"
+} else if (subjlist == "all_retest") {
+    session <- "proactive"
+}
+prewhs <- c("none", "obsall", "obsresampbias")
+glms <- c("lsall_1rpm", "lssep_1rpm", "condition_1rpm", "lsall_acompcor06_1rpm")
+roiset <- "Schaefer2018Dev"
+measures <- c("cveuc", "crcor")
+subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
+atlas <- read_atlas(roiset)
+
+## read subject RDMs (just lsall_1rpm):
+
+rdm <- enlist(combo_paste(measures, prewhs, sep = "__"))
+for (prewh in prewhs) {
+    for (measure in measures) {
+        rdm[[paste0(measure, "__", prewh)]] <- read_rdms(
+            .measure = measure, .prewh = prewh,
+            .glmname = "lsall_1rpm", .roiset = roiset, .waves = waves,
+            .session = session, .subjects = subjects,
+            .ttypes1 = intersect(ttypes_by_run[[session]]$run1, ttypes[["bias"]]),
+            .ttypes2 = intersect(ttypes_by_run[[session]]$run2, ttypes[["bias"]]),
+            .rois = names(atlas$rois)
+            )
+    }
+}
+
+
+## read regression weights:
+
+dat <- enlist(combo_paste(measures, glms, sep = "__"))
+for (measure in measures) {
+    for (glmname in glms) {
+        for (prewh in prewhs) {
+            if (prewh != "none" && glmname != "lsall_1rpm") next
+            if (measure == "crcor" && glmname == "condition_1rpm") next
+            file_name <- 
+                construct_filename_weights(
+                    measure = measure, subjlist = subjlist, glmname = glmname, roiset = roiset, prewh = prewh
+                    )
+            dat[[paste0(measure, "__", glmname, "__", prewh)]] <- fread(file_name)
+        }
+    }
+}
+dat <- rbindlist(dat, idcol = "id")
+dat <- separate(dat, id, c("measure", "glmname", "prewh"), sep = "__")
+
+
+## calculate
+
+## for group stats:
+dat_sum <- dat %>% 
+    group_by(prewh, measure, glmname, term, roi, subject) %>%    ## average over waves
+    summarize(b = mean(b), .groups = "drop_last") %>%
+    summarize(
+        t_stat = t.test(b)$statistic, 
+        p = t.test(b, alternative = "greater")$p.value, 
+        .groups = "keep"
+        )
+## for wave 1 only:
+dat_sum_wave1 <- dat %>% 
+    filter(wave == "wave1") %>%
+    group_by(prewh, measure, glmname, term, roi, subject) %>%    ## average over waves
+    summarize(b = mean(b), .groups = "drop_last") %>%
+    summarize(
+        t_stat = t.test(b)$statistic, 
+        p = t.test(b, alternative = "greater")$p.value, 
+        .groups = "keep"
+        )
+
+## for test-retest correlations:
+dat_r <- dat %>% 
+    pivot_wider(names_from = "wave", values_from = "b") %>%  ## spread over waves
+    group_by(prewh, measure, glmname, term, roi) %>%    ## correlate over subjects
+    summarize(r = cor(wave1, wave2))
+
+```
+
+
+# cross-run correlation
+
+```{r fig.show = "hold", out.width = "50%"}
+for (mod in models$crcor) {
+    rdm_models <- 
+        read_model_rdm(
+            model = mod, measure_type = "similarity", session = session, ttype_subset = "bias"
+        )
+    p <- rdm_models %>% melt_mat %>% plot_melted_mat + labs(title = mod) + theme(axis.text.x = element_text(angle = 90, hjust = 0))
+    print(p)
+}
+```
+
+## RDMs
+
+```{r fig.width = 10}
+rdm_crcor_none <- rdm$crcor__none[, , c("Vis", "SomMot", "core32", "LH_Cont_PFCl_6", "LH_Cont_Par_6"), , ]
+
+apply(atanh(rdm_crcor_none), c("dim1", "dim2", "roi", "wave"), mean) %>%
+    tanh %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "group mean matrices: non-prewhitened")
+
+rdm_crcor_none[, , , 1, ] %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "single-subject matrices: non-prewhitened")
+
+
+rdm_crcor_obsall <- rdm$crcor__obsall[, , c("Vis", "SomMot", "core32", "LH_Cont_PFCl_6", "LH_Cont_Par_6"), , ]
+apply(atanh(rdm_crcor_obsall), c("dim1", "dim2", "roi", "wave"), mean) %>%
+    tanh %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "group mean matrices: prewhitened")
+
+rdm_crcor_obsall[, , , 1, ] %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "single-subject matrices: prewhitened")
+
+```
+
+
+
+## group stats
+
+### non-prewhitened
+
+```{r}
+
+dat_sum %>%
+    filter(measure == "crcor", prewh == "none") %>%
+    ggplot(aes(roi, t_stat, fill = glmname)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun = "mean", position = position_dodge(width = 0.5), geom = "col") +
+    facet_grid(cols = vars(term)) +
+    coord_flip() +
+    scale_fill_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "group-level t stats")
+
+
+dat %>%
+    filter(measure == "crcor", prewh == "none") %>%
+    ggplot(aes(roi, b, color = glmname)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun.data = "mean_cl_boot", position = position_dodge(width = 0.5), geom = "errorbar") +
+    facet_grid(cols = vars(term), scales = "free") +
+    coord_flip() +
+    scale_color_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "group-level b coefficients")
+
+```
+
+
+```{r fig.height = 2.5, out.width = "100%"}
+
+dat_sum %>%
+    filter(measure == "crcor", prewh == "none") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "glmname", values_from = "t_stat") %>%
+    ggplot(aes(lsall_1rpm, lssep_1rpm)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "group-level t stats")
+
+dat_sum_wave1 %>%
+    filter(measure == "crcor", prewh == "none") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "glmname", values_from = "t_stat") %>%
+    ggplot(aes(lsall_1rpm, lsall_acompcor06_1rpm)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "group-level t stats")
+
+```
+
+
+### prewhitened: lsall_1rpm
+
+
+```{r}
+
+dat_sum %>%
+    filter(measure == "crcor", glmname == "lsall_1rpm") %>%
+    ggplot(aes(roi, t_stat, fill = prewh)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun = "mean", position = position_dodge(width = 0.5), geom = "col") +
+    facet_grid(cols = vars(term)) +
+    coord_flip() +
+    scale_fill_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "group-level t stats")
+
+dat %>%
+    filter(measure == "crcor", glmname == "lsall_1rpm") %>%
+    ggplot(aes(roi, b, color = prewh)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun.data = "mean_cl_boot", position = position_dodge(width = 0.5), geom = "errorbar") +
+    facet_grid(cols = vars(term), scales = "free") +
+    coord_flip() +
+    scale_color_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "group-level b coefficients")
+
+dat_sum %>%
+    filter(measure == "crcor", glmname == "lsall_1rpm") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "prewh", values_from = "t_stat") %>%
+    ggplot(aes(none, obsall)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "group-level t stats")
+
+```
+
+
+
+## test-retest correlations
+
+### non-prewhitened
+
+```{r}
+
+dat_r %>%
+    filter(measure == "crcor", prewh == "none") %>%
+    ggplot(aes(roi, r, fill = glmname)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun = "mean", position = position_dodge(width = 0.5), geom = "col") +
+    facet_grid(cols = vars(term)) +
+    coord_flip() +
+    scale_fill_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "test-retest correlations")
+
+```
+
+```{r fig.height = 2.5, out.width = "100%"}
+
+dat_r %>%
+    filter(measure == "crcor", prewh == "none") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "glmname", values_from = "r") %>%
+    ggplot(aes(lsall_1rpm, lssep_1rpm)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "test-retest correlations")
+
+```
+
+### prewhitened: lsall_1rpm
+
+
+```{r}
+
+dat_r %>%
+    filter(measure == "crcor", glmname == "lsall_1rpm") %>%
+    ggplot(aes(roi, r, fill = prewh)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun = "mean", position = position_dodge(width = 0.5), geom = "col") +
+    facet_grid(cols = vars(term)) +
+    coord_flip() +
+    scale_fill_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "test-retest correlations")
+
+```
+
+```{r fig.height = 2.5, out.width = "100%"}
+
+dat_r %>%
+    filter(measure == "crcor", glmname == "lsall_1rpm") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "prewh", values_from = "r") %>%
+    ggplot(aes(none, obsall)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "test-retest correlations")
+
+
+dat_r %>%
+    filter(measure == "crcor", glmname == "lsall_1rpm") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "prewh", values_from = "r") %>%
+    ggplot(aes(obsresampbias, obsall)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "test-retest correlations")
+
+
+```
+
+
+
+## table
+
+### non-prewhitened
+
+```{r}
+dat_sum %>%
+    full_join(dat_r) %>%
+    filter(measure == "crcor", term %in% c("conjunction", "distractor", "incongruency", "target"), prewh == "none") %>%
+    pivot_wider(names_from = c("glmname"), values_from = c("t_stat", "p", "r")) %>%
+    filter(p_lsall_1rpm < 0.01 | p_lssep_1rpm < 0.01) %>%
+    arrange(-t_stat_lsall_1rpm)
+```
+
+### prewhitened
+```{r}
+dat_sum %>%
+    full_join(dat_r) %>%
+    filter(measure == "crcor", term %in% c("conjunction", "distractor", "incongruency", "target"), prewh == "obsall") %>%
+    filter(p < 0.01) %>%
+    arrange(-t_stat)
+```
+All significant ROIs at $\alpha < 0.01$ uncorrected.
+Sorted by `t_stat_lsall_1rpm`.
+`r_*` columns show test--retest correlations.
+
+
+
+
+# cross-validated euclidean
+
+
+```{r fig.show = "hold", out.width = "50%"}
+for (mod in models$cveuc) {
+    rdm_models <- 
+        read_model_rdm(
+            model = mod, measure_type = "cvdistance", session = session, ttype_subset = "bias"
+        )
+    p <- rdm_models %>% melt_mat %>% plot_melted_mat + labs(title = mod) + theme(axis.text.x = element_text(angle = 90, hjust = 0))
+    print(p)
+}
+```
+
+
+## RDMs
+
+```{r fig.width = 10}
+
+rdm_cveuc_none <- rdm$cveuc__none[, , c("Vis", "SomMot", "core32", "LH_Cont_PFCl_6", "LH_Cont_Par_6"), , ]
+sds <- apply(rdm_cveuc_none, c("roi", "subject", "wave"), function(x) sd(vec(x)))
+rdm_cveuc_none <- sweep(rdm_cveuc_none, 3:5, sds, "/")
+apply(rdm_cveuc_none, c("dim1", "dim2", "roi", "wave"), mean) %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "group mean matrices: non-prewhitened")
+
+rdm_cveuc_none[, , , 1, ] %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "single-subject matrices: non-prewhitened")
+
+
+rdm_cveuc_obsall <- rdm$cveuc__obsall[, , c("Vis", "SomMot", "core32", "LH_Cont_PFCl_6", "LH_Cont_Par_6"), , ]
+sds <- apply(rdm_cveuc_obsall, c("roi", "subject", "wave"), function(x) sd(vec(x)))
+rdm_cveuc_obsall <- sweep(rdm_cveuc_obsall, 3:5, sds, "/")
+apply(rdm_cveuc_obsall, c("dim1", "dim2", "roi", "wave"), mean) %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "group mean matrices: prewhitened")
+
+rdm_cveuc_obsall[, , , 1, ] %>%
+    melt_mat %>%
+    plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+    scale_fill_viridis_c() +
+    facet_grid(vars(wave), vars(roi), scales = "free") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+    labs(title = "single-subject matrices: prewhitened")
+
+
+```
+
+## group stats
+
+### non-prewhitened
+
+```{r}
+
+dat_sum %>%
+    filter(measure == "cveuc", prewh == "none") %>%
+    ggplot(aes(roi, t_stat, fill = glmname)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun = "mean", position = position_dodge(width = 0.5), geom = "col") +
+    facet_grid(cols = vars(term)) +
+    coord_flip() +
+    scale_fill_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "group-level t stats")
+
+
+dat %>%
+    filter(measure == "cveuc", prewh == "none") %>%
+    ggplot(aes(roi, b, color = glmname)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun.data = "mean_cl_boot", position = position_dodge(width = 0.5), geom = "errorbar") +
+    facet_grid(cols = vars(term), scales = "free") +
+    coord_flip() +
+    scale_color_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "group-level b coefficients")
+
+```
+
+
+```{r fig.height = 2.5, out.width = "100%"}
+
+dat_sum %>%
+    filter(measure == "cveuc", prewh == "none") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "glmname", values_from = "t_stat") %>%
+    ggplot(aes(lsall_1rpm, lssep_1rpm)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "group-level t stats")
+
+dat_sum %>%
+    filter(measure == "cveuc", prewh == "none") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "glmname", values_from = "t_stat") %>%
+    ggplot(aes(lsall_1rpm, condition_1rpm)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "group-level t stats")
+    
+
+dat_sum_wave1 %>%
+    filter(measure == "cveuc", prewh == "none") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "glmname", values_from = "t_stat") %>%
+    ggplot(aes(lsall_1rpm, lsall_acompcor06_1rpm)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "group-level t stats")
+
+```
+
+### prewhitened: lsall_1rpm
+
+```{r}
+
+dat_sum %>%
+    filter(measure == "cveuc", glmname == "lsall_1rpm") %>%
+    ggplot(aes(roi, t_stat, fill = prewh)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun = "mean", position = position_dodge(width = 0.5), geom = "col") +
+    facet_grid(cols = vars(term)) +
+    coord_flip() +
+    scale_fill_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "group-level t stats")
+
+
+dat %>%
+    filter(measure == "cveuc", glmname == "lsall_1rpm") %>%
+    ggplot(aes(roi, b, color = prewh)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun.data = "mean_cl_boot", position = position_dodge(width = 0.5), geom = "errorbar") +
+    facet_grid(cols = vars(term), scales = "free") +
+    coord_flip() +
+    scale_color_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "group-level b coefficients")
+
+```
+
+
+```{r fig.height = 2.5, out.width = "100%"}
+
+dat_sum %>%
+    filter(measure == "cveuc", glmname == "lsall_1rpm") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "prewh", values_from = "t_stat") %>%
+    ggplot(aes(none, obsall)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "group-level t stats")
+
+```
+
+
+
+
+## test-retest correlations
+
+### non-prewhitened
+
+
+```{r}
+
+dat_r %>%
+    filter(measure == "cveuc", prewh == "none") %>%
+    ggplot(aes(roi, r, fill = glmname)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun = "mean", position = position_dodge(width = 0.5), geom = "col") +
+    facet_grid(cols = vars(term)) +
+    coord_flip() +
+    scale_fill_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "test-retest correlations")
+
+```
+
+
+```{r fig.height = 2.5, out.width = "100%"}
+
+dat_r %>%
+    filter(measure == "cveuc", prewh == "none") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "glmname", values_from = "r") %>%
+    ggplot(aes(lsall_1rpm, lssep_1rpm)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "test-retest correlations")
+
+
+dat_r %>%
+    filter(measure == "cveuc", prewh == "none") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "glmname", values_from = "r") %>%
+    ggplot(aes(lsall_1rpm, condition_1rpm)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "test-retest correlations")
+
+```
+
+### prewhitened: lsall_1rpm
+
+
+```{r}
+
+dat_r %>%
+    filter(measure == "cveuc", glmname == "lsall_1rpm") %>%
+    ggplot(aes(roi, r, fill = prewh)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun = "mean", position = position_dodge(width = 0.5), geom = "col") +
+    facet_grid(cols = vars(term)) +
+    coord_flip() +
+    scale_fill_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "test-retest correlations")
+
+
+```
+
+
+```{r fig.height = 2.5, out.width = "100%"}
+
+dat_r %>%
+    filter(measure == "cveuc", glmname == "lsall_1rpm") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "prewh", values_from = "r") %>%
+    ggplot(aes(none, obsall)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "test-retest correlations")
+
+
+dat_r %>%
+    filter(measure == "cveuc", glmname == "lsall_1rpm") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "prewh", values_from = "r") %>%
+    ggplot(aes(obsresampbias, obsall)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "test-retest correlations")
+
+```
+
+
+## table
+
+```{r}
+
+dat_sum %>%
+    full_join(dat_r) %>%
+    filter(measure == "cveuc", prewh == "none", term %in% c("target", "distractor", "incongruency")) %>%
+    pivot_wider(names_from = c("glmname"), values_from = c("t_stat", "p", "r")) %>%
+    filter(p_lsall_1rpm < 0.01 | p_lssep_1rpm < 0.01) %>%
+    arrange(-t_stat_lsall_1rpm)
+
+    
+dat_sum %>%
+    full_join(dat_r) %>%
+    filter(measure == "cveuc", prewh == "obsall", term %in% c("target", "distractor", "incongruency")) %>%
+    filter(p < 0.01) %>%
+    arrange(-t_stat)
+
+```
+All significant ROIs at $\alpha < 0.01$ uncorrected.
+Sorted by `t_stat_lsall_1rpm`.
+`r_*` columns show test--retest correlations.
+
+
+# comparison of measures
+
+cross-validated euclidean vs cross-run correlations
+
+## non-prewhitened euclidean
+
+```{r}
+
+dat_sum %>%
+    filter(term %in% c("distractor", "incongruency", "target"), prewh == "none", glmname == "lsall_1rpm") %>%
+    pivot_wider(id_cols = c("glmname", "term", "roi"), names_from = "measure", values_from = "t_stat") %>%
+    ggplot(aes(crcor, cveuc)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(rows = vars(glmname), cols = vars(term)) +
+    labs(title = "t statistics", x = "cross-run correlation", y = "cross-validated euclidean")
+
+dat_r %>%
+    filter(term %in% c("distractor", "incongruency", "target"), prewh == "none", glmname == "lsall_1rpm") %>%
+    pivot_wider(id_cols = c("glmname", "term", "roi"), names_from = "measure", values_from = "r") %>%
+    ggplot(aes(crcor, cveuc)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(rows = vars(glmname), cols = vars(term)) +
+    labs(title = "test--retest correlations", x = "cross-run correlation", y = "cross-validated euclidean")
+
+```
+
+## prewhitened euclidean
+
+```{r}
+
+dat_sum %>%
+    filter(term %in% c("distractor", "incongruency", "target"), prewh == "obsall", glmname == "lsall_1rpm") %>%
+    pivot_wider(id_cols = c("glmname", "term", "roi"), names_from = "measure", values_from = "t_stat") %>%
+    ggplot(aes(crcor, cveuc)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(rows = vars(glmname), cols = vars(term)) +
+    labs(title = "t statistics", x = "cross-run correlation", y = "cross-validated euclidean")
+
+dat_r %>%
+    filter(term %in% c("distractor", "incongruency", "target"), prewh == "obsall", glmname == "lsall_1rpm") %>%
+    pivot_wider(id_cols = c("glmname", "term", "roi"), names_from = "measure", values_from = "r") %>%
+    ggplot(aes(crcor, cveuc)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(rows = vars(glmname), cols = vars(term)) +
+    labs(title = "test--retest correlations", x = "cross-run correlation", y = "cross-validated euclidean")
+
+```

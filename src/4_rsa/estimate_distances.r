@@ -91,8 +91,8 @@ res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %d
 
     if (measure == "cveuc") {  ## cross-validated euclidean
         cvdist(
-            average(B$run1, g = colnames(B$run1)),#[, ttypes_by_run[[ses]]$run1], ## paranoia, just to make sure all 
-            average(B$run2, g = colnames(B$run2)),#[, ttypes_by_run[[ses]]$run2], ## conditions orders are the same
+            average(B$run1, g = colnames(B$run1)),
+            average(B$run2, g = colnames(B$run2)),
             scale = TRUE
         )
     } else if (measure == "crcor") {    ## cross-run correlation (with downsampling)

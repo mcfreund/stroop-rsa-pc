@@ -1,15 +1,12 @@
 library(here)
 library(data.table)
 library(magrittr)
-library(httpgd)
-hgd()
 source(here::here("src", "stroop-rsa-pc.R"))
 
 ## build label vectors
 
-ttypes <- sort(ttypes)
-target <- gsub("[A-Z]", "", ttypes)
-distractor <- gsub("[a-z]", "", ttypes)
+target <- gsub("[A-Z]", "", ttypes$all)
+distractor <- gsub("[a-z]", "", ttypes$all)
 incongruency <- as.character(target != tolower(distractor))
 
 ## build feature vectors (indicators)
@@ -17,10 +14,11 @@ incongruency <- as.character(target != tolower(distractor))
 ftrs_target <- indicator_matrix(target)
 ftrs_distractor <- indicator_matrix(distractor)
 ftrs_incongruency <- cbind(indicator_matrix(incongruency)[, "TRUE"])
-rownames(ftrs_target) <- ttypes
-rownames(ftrs_distractor) <- ttypes
-rownames(ftrs_incongruency) <- ttypes
-ftrs_conjunction <- ftrs_target * ftrs_distractor
+ftrs_conjunction <- indicator_matrix(ttypes$all)
+rownames(ftrs_target) <- ttypes$all
+rownames(ftrs_distractor) <- ttypes$all
+rownames(ftrs_incongruency) <- ttypes$all
+rownames(ftrs_conjunction) <- ttypes$all
 
 ## make models for crcor: cross-run correlation matrices (with downsampling)
 
@@ -42,11 +40,11 @@ for (ses in sessions) {
             conditions_run2 <- ttypes_by_run[[ses]]$run2
 
             if (sub == "bias") {
-                conditions_run1 <- intersect(ttypes_by_run[[ses]]$run1, ttypes_bias)
-                conditions_run2 <- intersect(ttypes_by_run[[ses]]$run2, ttypes_bias)
+                conditions_run1 <- intersect(ttypes_by_run[[ses]]$run1, ttypes$bias)
+                conditions_run2 <- intersect(ttypes_by_run[[ses]]$run2, ttypes$bias)
             } else if (sub == "pc50") {
-                conditions_run1 <- intersect(ttypes_by_run[[ses]]$run1, ttypes_pc50)
-                conditions_run2 <- intersect(ttypes_by_run[[ses]]$run2, ttypes_pc50)
+                conditions_run1 <- intersect(ttypes_by_run[[ses]]$run1, ttypes$pc50)
+                conditions_run2 <- intersect(ttypes_by_run[[ses]]$run2, ttypes$pc50)
             }
 
             x <- l[[mod]]
@@ -72,16 +70,16 @@ for (ses in sessions) {
             conditions_run2 <- ttypes_by_run[[ses]]$run2
 
             if (sub == "bias") {
-                conditions_run1 <- intersect(conditions_run1, ttypes_bias)
-                conditions_run2 <- intersect(conditions_run2, ttypes_bias)
+                conditions_run1 <- intersect(conditions_run1, ttypes$bias)
+                conditions_run2 <- intersect(conditions_run2, ttypes$bias)
             } else if (sub == "pc50") {
-                conditions_run1 <- intersect(conditions_run1, ttypes_pc50)
-                conditions_run2 <- intersect(conditions_run2, ttypes_pc50)
+                conditions_run1 <- intersect(conditions_run1, ttypes$pc50)
+                conditions_run2 <- intersect(conditions_run2, ttypes$pc50)
             }
             
             x <- l[[mod]]
-            x1 <- x[conditions_run1, ]
-            x2 <- x[conditions_run2, ]
+            x1 <- x[conditions_run1, , drop = FALSE]
+            x2 <- x[conditions_run2, , drop = FALSE]
             X <- cvdist(t(x1), t(x2))
             X <- X / abs(max(X)) ## scale so max val is 1
             image(X)
