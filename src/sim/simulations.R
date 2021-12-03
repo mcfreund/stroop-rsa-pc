@@ -21,7 +21,7 @@ subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
 glmname <- "lsall_1rpm"
 wav <- "wave1"
 n_experiments <- 100  ## number simulations per subject
-n_cores <- 30
+n_cores <- 16
 p <- length(ttypes$all)
 Mvec <- create_M(ttypes$all)  ## components of true similarity structure
 mu <- rep(0, p)  ## true mean activations
@@ -124,44 +124,61 @@ end <- Sys.time()
 saveRDS(false_positive, here("out", "sim", paste0("false_positive_", wav, ".RDS")))
 
 
-params <- expand.grid(
-    ttype_subset = names(ttypes),
-    ses = sessions,
-    r = r,
-    stringsAsFactors = FALSE
+
+## true positive simulations ----
+
+a_list <- list(
+    distractor_target                          = c(0.5, 0, 0.5/4, 0, 0.5/4),
+    incongruency                               = c(0.5, 0, 0, 0.5/4, 0),
+    distractor_target_incongruency             = c(0.5, 0, 0.5/4, 0.5/4, 0.5/4),
+    distractor_target_incongruency_conjunction = c(0.5, 0.5/4, 0.5/4, 0.5/4, 0.5/4)
 )
+for (effect_i in seq_along(a_list)) {
 
-beg <- Sys.time()
-dat <- vector("list", nrow(params))
-for (param_i in seq_len(nrow(params))) {
-    # param_i = 10
-    
-    ttype_subset <- params$ttype_subset[param_i]
-    ses <- params$ses[param_i]
-    .r <- params$r[param_i]
-
-    result <- simulate_experiments(
-        X_list = X_master[[ses]], 
-        Z_list = Z_master[[ses]], 
-        Q_sim = Q_sim_master[[ses]][[ttype_subset]], 
-        Q_dis = Q_dis_master[[ses]][[ttype_subset]],
-        .ses = ses,
-        .ttype_subset = ttype_subset,
-        .r = .r
+    a <- a_list[[effect_i]]
+    sigma <- matrix(Mvec %*% a, ncol = p, nrow = p, dimnames = list(ttypes$all, ttypes$all))  ## true geometry
+    params <- expand.grid(
+        ttype_subset = c("pc50", "bias"),
+        ses = sessions,
+        r = r,
+        stringsAsFactors = FALSE
     )
 
-    ## save
-    
-    result$session <- ses
-    result$ttype_subset <- ttype_subset
-    result$r <- .r
+    beg <- Sys.time()
+    dat <- vector("list", nrow(params))
+    for (param_i in seq_len(nrow(params))) {
+        # param_i = 10
+        
+        ttype_subset <- params$ttype_subset[param_i]
+        ses <- params$ses[param_i]
 
-    dat[[param_i]] <- result
+        result <- simulate_experiments(
+            .X_list = xmat_condition_master[[ses]], 
+            .Z_list = xmat_lsall_master[[ses]], 
+            .Q_dis  = xmat_dist_master[[ses]][[ttype_subset]],
+            .Q_sim  = xmat_simil_master[[ses]][[ttype_subset]], 
+            .ttype_subset = ttype_subset,
+            .r = params$r[param_i]
+        )
+
+        ## save
+        
+        result$session <- ses
+        result$ttype_subset <- ttype_subset
+        result$r <- params$r[param_i]
+
+        dat[[param_i]] <- result
+        rm(result)
+        gc()
+        
+        print(paste0(param_i, "/", nrow(params)))
+
+    }
+    end <- Sys.time()
+    (end - beg)
+
+    saveRDS(rbindlist(dat), here("out", "sim", paste0("true_positive_", names(a_list[effect_i]), "_", wav, ".RDS")))
+    rm(dat)
+    gc()
 
 }
-false_positive <- rbindlist(dat)
-end <- Sys.time()
-(end - beg)
-## 4.56 minutes for nrow(params)=5, n_experiments=100, n_cores=26, n_resamples=100
-
-saveRDS(false_positive, here("out", "sim", "false_positive.RDS"))

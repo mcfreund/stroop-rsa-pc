@@ -1,0 +1,176 @@
+---
+title: "assessing bias of RSA methods"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 2
+        toc_float: true
+        number_sections: true
+        df_print: paged
+        code_folding: hide
+---
+
+
+
+# The basic model 
+
+
+For a given subject $s$, wave $w$, session $e$, and run $n$, an fMRI timeseries $\mathbf{Y}(s, w, e, n)$ is obtained via the sum
+$$\mathbf{Y}(s, w, e, n) = \mathbf{X}(s, w, e, n)\mathbf{B}(s, w, e) + \mathbf{E}(s, w, e, n)$$
+This timeseries $\mathbf{Y}$ consists of $t \in 1, ..., T$ TRs (rows) from $v \in 1, ..., V$ vertices (columns).
+Experimental conditions, or predictors $p \in 1, ..., P$, modulate the activity of each vertex according to an underlying $p$-vector of weights, or "true activation profile", one per vertex $v$.
+These true activation profiles, stored as columns of $\mathbf{B}$, denoted $\mathbf{B}_{\cdot v}$, are generated
+$$\mathbf{B}_{\cdot v} \sim N_p(\boldsymbol{\mu}, \boldsymbol{\Sigma})$$.
+
+In the basic model, the $p$-vector $\boldsymbol{\mu} = \mathbf{0}$ indicates that each condition evokes zero mean activity over vertices in the region.
+$\boldsymbol{\Sigma}$, the true similarity structure, is constructed as a weighted sum of a set of symmetric matrices
+$$\boldsymbol{\Sigma} = \sum_{m\in M} a_m \mathbf{M}(m)$$
+where elements $m$ of the set of models
+$$M=\{\text{baseline, diagonal, distractor, incongruency, target}\}$$ 
+index the component matrices $\mathbf{M}(m)$.
+This set of models are defined further below.
+#The $a_m$ are scaled such that the diagonal elements of $\Sigma$ are equal to 1.
+
+The true activation profiles in $\mathbf{B}$ are projected into the timeseries by combining them with the design matrix $\mathbf{X}$,
+which was built from the stimulus presentation times via the AFNI function _3dDeconvolve_.
+
+
+The basic model assumes each vertex $v$ and TR $t$ receives private noise (i.e., spatiotemporally uncorrelated error)
+$$\mathbf{E}_{tv} \sim N(0, \Phi)$$
+where
+$$\Phi = 1/r$$
+so that $r$ defines the signal-to-noise ratio: the SD among conditions ($\Sigma$, signal) to SD with respect to conditions ($\Phi$, noise).
+
+Under these simple assumptions (and some slightly more complex), it will be assessed whether RSA methods can recover the true similarity structure $\boldsymbol{\Sigma}$ and the true set of weights $a$.
+This will be assessed at select values of distributional parameters ($a$, $r$).
+
+```{r setup, results = FALSE, message = FALSE}
+
+library(colorout)
+library(here)
+library(data.table)
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+source(here("src", "stroop-rsa-pc.R"))
+
+opts_chunk$set(fig.width = 8, results = FALSE)
+options(dplyr.summarise.inform = FALSE)
+theme_set(theme_bw(base_size = 8))
+
+plot_simulation_results <- function(x, terms = c("conjunction", "distractor", "incongruency", "target")) {
+        
+    x_sum <- x %>% 
+        group_by(term, variable, session, ttype_subset, r, experiment) %>%
+        summarize(
+            m = mean(value),
+            stat = t.test(value)$statistic, 
+            p = t.test(value, alternative = "greater")$p.value, 
+            pr = p < 0.05)
+
+    p <- enlist(c("means", "stats", "positive_rate"))
+
+    p$means <- 
+        x_sum %>%
+        filter(term %in% terms) %>%
+        ggplot(aes(as.factor(r), m, color = session, fill = session)) +
+        stat_summary(fun = "mean", size = 2, geom = "line", aes(group = session)) +
+        stat_summary(fun.data = "mean_cl_boot", size = 2, geom = "errorbar", width = 0) +
+        facet_grid(vars(variable, ttype_subset), vars(term), scales = "free_y") +
+        scale_color_viridis_d() +
+        scale_fill_viridis_d() +
+        labs(x = "SNR", y = "mean RSA weight", title = "means by SNR") +
+        theme(legend.position = "top")
+
+    p$stats <- 
+        x_sum %>%
+        filter(term %in% terms) %>%
+        ggplot(aes(as.factor(r), stat, color = session, fill = session)) +
+        geom_hline(yintercept = 2) +
+        geom_hline(yintercept = -2) +
+        stat_summary(fun = "mean", size = 2, geom = "line", aes(group = session)) +
+        stat_summary(fun.data = "mean_cl_boot", size = 2, geom = "errorbar", width = 0) +
+        facet_grid(vars(variable, ttype_subset), vars(term), scales = "free_y") +
+        scale_color_viridis_d() +
+        scale_fill_viridis_d() +
+        labs(x = "SNR", y = "t statistic of RSA weight", title = "t-stats by SNR") +
+        theme(legend.position = "top")
+
+    p$positive_rate <- 
+        x_sum %>%
+        filter(term %in% terms) %>%
+        summarize(pr = mean(pr)) %>%
+        ggplot(aes(as.factor(r), pr, color = session, fill = session)) +
+        geom_hline(yintercept = 0.05) +
+        geom_line(aes(group = session), size = 2) +
+        facet_grid(vars(variable, ttype_subset), vars(term)) +
+        scale_color_viridis_d() +
+        scale_fill_viridis_d() +
+        labs(x = "SNR", y = "positive rate (h1>0) of RSA model", title = "positive detection rates by SNR") +
+        theme(legend.position = "top")
+
+    p
+
+}
+
+dat_false_positive_wave1 <- readRDS(here("out", "sim", "false_positive_wave1.RDS"))
+dat_true_positive_dt_wave1 <- readRDS(here("out", "sim", "true_positive_distractor_target_wave1.RDS"))
+dat_true_positive_i_wave1 <- readRDS(here("out", "sim", "true_positive_incongruency_wave1.RDS"))
+dat_true_positive_dti_wave1 <- readRDS(here("out", "sim", "true_positive_distractor_target_incongruency_wave1.RDS"))
+dat_true_positive_dtic_wave1 <- readRDS(here("out", "sim", "true_positive_distractor_target_incongruency_conjunction_wave1.RDS"))
+
+```
+
+
+# False positive simulation
+
+Parameters:
+
+
+
+## true timeseries xmats
+
+```{r}
+plot_simulation_results(dat_false_positive_wave1)
+```
+
+
+
+
+
+# True positive simulation: distractor and target > 0
+
+## true timeseries xmats
+
+```{r}
+plot_simulation_results(dat_true_positive_dt_wave1)
+```
+
+
+
+# True positive simulation: incongruency > 0
+
+## true timeseries xmats
+
+```{r}
+plot_simulation_results(dat_true_positive_i_wave1)
+```
+
+
+# True positive simulation: distractor, target, incongruency > 0
+
+## true timeseries xmats
+
+```{r}
+plot_simulation_results(dat_true_positive_dti_wave1)
+```
+
+
+# True positive simulation: distractor, target, incongruency, conjunction > 0
+
+## true timeseries xmats
+
+```{r}
+plot_simulation_results(dat_true_positive_dtic_wave1)
+```
