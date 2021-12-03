@@ -49,7 +49,7 @@ do
             --measure $measure \
             --prewh $prewh \
             --ttype_subset $ttype_subset \
-            --n_cores 26
+            --n_cores 30
         
         echo regressing distances
         Rscript ./src/4_rsa/regress_distances.r \
@@ -63,5 +63,4 @@ do
             --ttype_subset $ttype_subset
         done
 
-    done
 done

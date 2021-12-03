@@ -30,16 +30,14 @@ library(tidyr)
 library(ggplot2)
 library(ggridges)
 library(abind)
-library(httpgd)
 
 ## settings
-hgd()
 opts_chunk$set(echo = TRUE)
 theme_set(theme_bw(base_size = 10))
 
 ## constants
-#subjlist <- "all_retest"
-subjlist <- params$subjlist
+subjlist <- "all_retest"
+#subjlist <- params$subjlist
 if (subjlist == "ispc_retest") {
     session <- "reactive"
 } else if (subjlist == "all_retest") {
@@ -117,11 +115,6 @@ dat_r <- dat %>%
     group_by(prewh, measure, glmname, term, roi) %>%    ## correlate over subjects
     summarize(r = cor(wave1, wave2))
 
-dat %>%
-    pivot_wider(names_from = "glmname", values_from = "b") %>%
-    mutate(iseq = lsall_1rpm == lsall_acompcor06_1rpm) %>%
-    select(measure, iseq) %>%
-    table
 ```
 
 
