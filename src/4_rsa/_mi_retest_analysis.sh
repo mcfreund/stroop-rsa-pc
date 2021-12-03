@@ -1,4 +1,4 @@
-## reactive test/retest analysis ----
+## proactive test/retest analysis ----
 
 ## TEST 1. different first-level time-series models.
 
