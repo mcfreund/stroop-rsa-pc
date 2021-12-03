@@ -26,3 +26,32 @@ Rscript ./src/4_rsa/parcellate_giftis.r \
     --waves $wave \
     --sessions $sessions \
     --n_cores 26
+
+## started at 2:15p, 2 dec
+for ttype_subset in ${ttype_subsets[@]}
+do
+    Rscript ./src/4_rsa/estimate_distances.r \
+        --glmname $glmname \
+        --roiset $roiset \
+        --subjlist $subjlist \
+        --waves $wave \
+        --sessions $sessions \
+        --measure $measure \
+        --prewh $prewh \
+        --ttype_subset $ttype_subset \
+        --n_cores 30 \
+        --n_resamples 10000
+        
+    Rscript ./src/4_rsa/regress_distances.r \
+        --glmname $glmname \
+        --roiset $roiset \
+        --subjlist $subjlist \
+        --waves $wave \
+        --sessions $sessions \
+        --measure $measure \
+        --prewh $prewh \
+        --ttype_subset $ttype_subset
+done
+
+
+
