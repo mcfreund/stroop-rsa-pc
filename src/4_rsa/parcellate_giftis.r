@@ -55,7 +55,7 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
 if (glmname == "lssep_1rpm") {
     suffix <- ".gii"
     pattern <- NULL
-} else if (glmname %in% c("lsall_1rpm", "condition_1rpm")) {
+} else if (glmname %in% c("lsall_1rpm", "condition_1rpm", "lsall_acompcor06_1rpm")) {
     suffix <- "_REML.func.gii"
     pattern <- "_Coef"
 } else {

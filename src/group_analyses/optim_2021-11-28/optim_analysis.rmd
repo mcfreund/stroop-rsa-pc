@@ -46,7 +46,7 @@ if (subjlist == "ispc_retest") {
     session <- "proactive"
 }
 prewhs <- c("none", "obsall", "obsresampbias")
-glms <- c("lsall_1rpm", "lssep_1rpm", "condition_1rpm")
+glms <- c("lsall_1rpm", "lssep_1rpm", "condition_1rpm", "lsall_acompcor06_1rpm")
 roiset <- "Schaefer2018Dev"
 measures <- c("cveuc", "crcor")
 subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
@@ -100,6 +100,16 @@ dat_sum <- dat %>%
         p = t.test(b, alternative = "greater")$p.value, 
         .groups = "keep"
         )
+## for wave 1 only:
+dat_sum_wave1 <- dat %>% 
+    filter(wave == "wave1") %>%
+    group_by(prewh, measure, glmname, term, roi, subject) %>%    ## average over waves
+    summarize(b = mean(b), .groups = "drop_last") %>%
+    summarize(
+        t_stat = t.test(b)$statistic, 
+        p = t.test(b, alternative = "greater")$p.value, 
+        .groups = "keep"
+        )
 
 ## for test-retest correlations:
 dat_r <- dat %>% 
@@ -107,7 +117,11 @@ dat_r <- dat %>%
     group_by(prewh, measure, glmname, term, roi) %>%    ## correlate over subjects
     summarize(r = cor(wave1, wave2))
 
-
+dat %>%
+    pivot_wider(names_from = "glmname", values_from = "b") %>%
+    mutate(iseq = lsall_1rpm == lsall_acompcor06_1rpm) %>%
+    select(measure, iseq) %>%
+    table
 ```
 
 
@@ -207,6 +221,17 @@ dat_sum %>%
     filter(measure == "crcor", prewh == "none") %>%
     pivot_wider(id_cols = c("term", "roi"), names_from = "glmname", values_from = "t_stat") %>%
     ggplot(aes(lsall_1rpm, lssep_1rpm)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "group-level t stats")
+
+dat_sum_wave1 %>%
+    filter(measure == "crcor", prewh == "none") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "glmname", values_from = "t_stat") %>%
+    ggplot(aes(lsall_1rpm, lsall_acompcor06_1rpm)) +
     geom_hline(yintercept = 0) +
     geom_vline(xintercept = 0) +
     geom_abline() +
@@ -346,7 +371,6 @@ dat_r %>%
 ### non-prewhitened
 
 ```{r}
-
 dat_sum %>%
     full_join(dat_r) %>%
     filter(measure == "crcor", term %in% c("conjunction", "distractor", "incongruency", "target"), prewh == "none") %>%
@@ -480,6 +504,18 @@ dat_sum %>%
     filter(measure == "cveuc", prewh == "none") %>%
     pivot_wider(id_cols = c("term", "roi"), names_from = "glmname", values_from = "t_stat") %>%
     ggplot(aes(lsall_1rpm, condition_1rpm)) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_abline() +
+    geom_point(size = 0.5) +
+    facet_grid(cols = vars(term)) +
+    labs(title = "group-level t stats")
+    
+
+dat_sum_wave1 %>%
+    filter(measure == "cveuc", prewh == "none") %>%
+    pivot_wider(id_cols = c("term", "roi"), names_from = "glmname", values_from = "t_stat") %>%
+    ggplot(aes(lsall_1rpm, lsall_acompcor06_1rpm)) +
     geom_hline(yintercept = 0) +
     geom_vline(xintercept = 0) +
     geom_abline() +
