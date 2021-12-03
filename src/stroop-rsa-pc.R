@@ -289,7 +289,7 @@ read_trialinfo <- function() {
 ## see here for more: https://github.com/mcfreund/psychomet/tree/master/in
 
 read_atlas <- function(
-    roiset = "Schaefer2018_control", 
+    roiset = "Schaefer2018Dev", 
     dir_atlas = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/"
     ) {
     
@@ -311,12 +311,12 @@ read_atlas <- function(
             parcel_core32 <- atlas$key[core32]
             parcel_vis <- atlas$key[grep("_Vis_", atlas$key)]
             parcel_sommot <- atlas$key[grep("_SomMot_", atlas$key)]
-            parcels_control <- c(core32 = list(parcel_core32), Vis = list(parcel_vis), SomMot = list(parcel_sommot))
-            atlas$rois <- c(setNames(as.list(parcel_core32), parcel_core32), parcels_control)
-        } else if ("Schaefer2018Network") {
-            atlas$rois <- split(atlas$key$parcel, get_network(atlas$key$parcel))
-        } else if ("Schaefer2018Parcel") {
-            atlas$rois <- split(atlas$key$parcel, atlas$key$parcel)
+            parcels_dev <- c(core32 = list(parcel_core32), Vis = list(parcel_vis), SomMot = list(parcel_sommot))
+            atlas$rois <- c(setNames(as.list(parcel_core32), parcel_core32), parcels_dev)
+        } else if (roiset == "Schaefer2018Network") {
+            atlas$rois <- split(atlas$key, get_network(atlas$key))
+        } else if (roiset == "Schaefer2018Parcel") {
+            atlas$rois <- split(atlas$key, atlas$key)
         }
 
     } else if (roiset == "Glasser2016") {
