@@ -131,7 +131,7 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
         )
 
 }
-stopImplicitCluster()
+stopCluster(cl)
 
 data_info <- as.data.table(do.call(rbind, res))
 fn <- construct_filename_datainfo(

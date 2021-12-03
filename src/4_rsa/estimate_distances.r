@@ -98,7 +98,7 @@ res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %d
     }
 
 }
-stopImplicitCluster()
+stopCluster(cl)
 
 
 ## write arrays within hdf5 file

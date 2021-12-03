@@ -109,7 +109,7 @@ res <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
     nms
 
 }
-stopImplicitCluster()
+stopCluster(cl)
 
 data_info <- as.data.table(do.call(rbind, res))
 fn <- construct_filename_datainfo(
