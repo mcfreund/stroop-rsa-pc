@@ -39,12 +39,12 @@ source(here("src", "stroop-rsa-pc.R"))
 task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
-    glmname <- "condition_1rpm"
-    roiset <- "Schaefer2018Dev"
-    subjlist <- "ispc_retest"
+    glmname <- "lsall_1rpm"
+    roiset <- "Schaefer2018Network"
+    subjlist <- "mcmi"
     subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]][1:5]
-    sessions <- "reactive"
-    waves <- c("wave1", "wave2")
+    sessions <- c("baseline", "proactive")
+    waves <- c("wave1")
     glm_i <- 1
     n_cores <- 10
 } else {
@@ -109,7 +109,7 @@ res <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
     nms
 
 }
-stopImplicitCluster()
+stopCluster(cl)
 
 data_info <- as.data.table(do.call(rbind, res))
 fn <- construct_filename_datainfo(

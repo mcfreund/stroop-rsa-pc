@@ -1,4 +1,3 @@
-library(colorout)
 library(here)
 library(data.table)
 source(here("src", "stroop-rsa-pc.R"))
@@ -15,3 +14,15 @@ all_retest <- intersect(
     unique(s[is_mc_mi_retest == TRUE | is_mc_mi_retest_cotwin == TRUE, subj])
     )
 fwrite(as.data.table(all_retest), here("out", "subjlist_all_retest.txt"), col.names = FALSE)
+
+
+## primary analysis list: mcmi (wave1) and mimc (wave1/wave2)
+mcmi <- unique(s[is_mc_mi == TRUE, "subj"])
+mimc <- unique(s[is_mi_mc == TRUE, "subj"])
+mcmi_cotwin <- unique(s[is_mc_mi_cotwin == TRUE, "subj"])
+mimc_cotwin <- unique(s[is_mi_mc_cotwin == TRUE, "subj"])
+
+fwrite(mcmi, here("out", "subjlist_mcmi.txt"), col.names = FALSE)
+fwrite(mimc, here("out", "subjlist_mimc.txt"), col.names = FALSE)
+fwrite(mcmi_cotwin, here("out", "subjlist_mcmi_cotwin.txt"), col.names = FALSE)
+fwrite(mimc_cotwin, here("out", "subjlist_mimc_cotwin.txt"), col.names = FALSE)

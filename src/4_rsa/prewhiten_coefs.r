@@ -17,7 +17,6 @@
 
 ## packages and sourced variables
 
-library(httpgd)
 library(here)
 library(dplyr)
 library(tidyr)
@@ -30,33 +29,40 @@ library(doParallel)
 library(CovTools)
 library(pracma)
 source(here("src", "stroop-rsa-pc.R"))
-hgd()
 
 ## set variables
 
 task <- "Stroop"
-n_resample <- 1E2
 
 if (interactive()) { 
     glmname <- "lsall_1rpm"
     roiset <- "Schaefer2018Dev"
-    prewh <- "obsresampbias"  ## obsresamp, obsall, obsresampbias
+    prewh <- "obsresampbias"  ## obsresamp, obsall, obsresampbias, obsresamppc50
     subjlist <- "ispc_retest"
     subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
     waves <- c("wave1", "wave2")
     sessions <- "reactive"
     n_cores <- 10
     ii <- 2#321  ## Vis: 331, SomMot: 341
-    expected_min <- 6
     overwrite <- FALSE
+    n_resamples <- 1E2
 } else {
     source(here("src", "parse_args.r"))
     print(args)
 }
 
+stopifnot(prewh %in% expected$prewh)
+
 atlas <- read_atlas(roiset)
 rois <- names(atlas$roi)
 
+if (prewh == "obsresamp") {
+    ttype_subset <- "all"
+} else if (prewh == "obsresampbias") {
+    ttype_subset <- "bias"
+} else if (prewh == "obsresamppc50") {
+    ttype_subset <- "pc50"
+}
 
 
 ## execute ----
@@ -88,21 +94,25 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
     
     ## estimate covariance matrix of residuals and invert
     if (prewh == "obsall") {
+
         S <- CovEst.2010OAS(resids)$S
-    } else if (prewh == "obsresamp") {
+
+    } else if (grepl("resamp", prewh)) {
+
+        resids <- resids[rownames(resids) %in% ttypes[[ttype_subset]], ]
+
         S <- resample_apply_combine(
             x = t(resids), 
-            resample_idx = get_resampled_idx(conditions = rownames(resids), n_resample, expected_min = expected_min),
+            resample_idx = get_resampled_idx(
+                conditions = rownames(resids), 
+                n_resamples, 
+                expected_min = expected_min[[paste0(ses, "_", ttype_subset)]])
+                ),
             apply_fun = function(.x) CovEst.2010OAS(t(.x))$S
             )
-    } else if (prewh == "obsresampbias") {
-        resids <- resids[rownames(resids) %in% ttypes$bias, ]
-        S <- resample_apply_combine(
-            x = t(resids), 
-            resample_idx = get_resampled_idx(conditions = rownames(resids), n_resample, expected_min = expected_min),
-            apply_fun = function(.x) CovEst.2010OAS(t(.x))$S
-            )
+
     }
+
     W <- sqrtm(S)$Binv  ## sqrt of inverse
     B_white <- crossprod(W, B)
     
@@ -121,7 +131,7 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
         )
 
 }
-stopImplicitCluster()
+stopCluster(cl)
 
 data_info <- as.data.table(do.call(rbind, res))
 fn <- construct_filename_datainfo(
