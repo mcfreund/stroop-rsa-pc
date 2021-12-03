@@ -1,8 +1,6 @@
 library(here)
 library(data.table)
 library(magrittr)
-library(httpgd)
-hgd()
 source(here::here("src", "stroop-rsa-pc.R"))
 
 ## build label vectors
@@ -80,8 +78,8 @@ for (ses in sessions) {
             }
             
             x <- l[[mod]]
-            x1 <- x[conditions_run1, ]
-            x2 <- x[conditions_run2, ]
+            x1 <- x[conditions_run1, , drop = FALSE]
+            x2 <- x[conditions_run2, , drop = FALSE]
             X <- cvdist(t(x1), t(x2))
             X <- X / abs(max(X)) ## scale so max val is 1
             image(X)

@@ -1,0 +1,137 @@
+---
+title: "RSA models"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 2
+        toc_float: true
+        number_sections: false
+        df_print: paged
+        code_folding: hide
+---
+
+
+```{r setup, results = FALSE, message = FALSE}
+
+library(colorout)
+library(here)
+library(data.table)
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+source(here("src", "stroop-rsa-pc.R"))
+
+opts_chunk$set(results = FALSE)
+options(dplyr.summarise.inform = FALSE)
+theme_set(theme_bw(base_size = 8))
+
+
+plot_models <- function(session, ttype_subset, measure_type) {
+    if (measure_type == "similarity") {
+        meas_type <- "crcor"
+    } else if (measure_type == "cvdistance") {
+        meas_type <- "cveuc"
+    }
+    for (mod in models[[meas_type]]) {
+        rdm_models <- 
+            read_model_rdm(model = mod, measure_type = measure_type, session = session, ttype_subset = ttype_subset)
+        p <- 
+            rdm_models %>% 
+            melt_mat %>% 
+            plot_melted_mat(add_greyscale_gradient = FALSE, rotate_xaxis_text = TRUE) + 
+            geom_text(aes(label = round(value, 1)), color = "white") +
+            scale_fill_viridis_c() +
+            labs(title = mod)
+
+        print(p)
+    }
+}
+
+```
+
+
+# baseline session
+
+## bias items
+
+### cross-run correlation
+```{r fig.show = "hold", out.width = "50%"}
+plot_models("baseline", "bias", "similarity")
+```
+
+### cross-validated distance
+```{r fig.show = "hold", out.width = "50%"}
+plot_models("baseline", "bias", "cvdistance")
+```
+
+## pc50 items
+
+### cross-run correlation
+```{r fig.show = "hold", out.width = "50%"}
+plot_models("baseline", "pc50", "similarity")
+```
+
+### cross-validated distance
+```{r fig.show = "hold", out.width = "50%"}
+plot_models("baseline", "pc50", "cvdistance")
+```
+
+
+
+
+# proactive session
+
+## bias items
+
+### cross-run correlation
+```{r fig.show = "hold", out.width = "50%"}
+plot_models("proactive", "bias", "similarity")
+```
+
+### cross-validated distance
+```{r fig.show = "hold", out.width = "50%"}
+plot_models("proactive", "bias", "cvdistance")
+```
+
+## pc50 items
+
+### cross-run correlation
+```{r fig.show = "hold", out.width = "50%"}
+plot_models("proactive", "pc50", "similarity")
+```
+
+### cross-validated distance
+```{r fig.show = "hold", out.width = "50%"}
+plot_models("proactive", "pc50", "cvdistance")
+```
+
+
+
+
+
+# reactive session
+
+## bias items
+
+### cross-run correlation
+```{r fig.show = "hold", out.width = "50%"}
+plot_models("reactive", "bias", "similarity")
+```
+
+### cross-validated distance
+```{r fig.show = "hold", out.width = "50%"}
+plot_models("reactive", "bias", "cvdistance")
+```
+
+## pc50 items
+
+### cross-run correlation
+```{r fig.show = "hold", out.width = "50%"}
+plot_models("reactive", "pc50", "similarity")
+```
+
+### cross-validated distance
+```{r fig.show = "hold", out.width = "50%"}
+plot_models("reactive", "pc50", "cvdistance")
+```
