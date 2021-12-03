@@ -8,6 +8,7 @@ sessions <- strsplit(args$sessions, "\\|")[[1]]
 subjects <- data.table::fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
 
 if ("n_cores" %in% names(args)) n_cores <- as.numeric(args$n_cores)  ## optional arg that needs coersion
+if ("n_resamples" %in% names(args)) n_resamples <- as.numeric(args$n_resamples)
 if ("prewh" %in% names(args)) prewh <- args$prewh
 if ("measure" %in% names(args)) measure <- args$measure
 if ("ttype_subset" %in% names(args)) ttype_subset <- args$ttype_subset

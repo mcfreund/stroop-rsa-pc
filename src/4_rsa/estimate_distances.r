@@ -32,7 +32,6 @@ source(here("src", "stroop-rsa-pc.R"))
 ## set variables
 
 task <- "Stroop"
-n_resamples <- 1E3
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
@@ -46,6 +45,7 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
     ii <- 1
     n_cores <- 10
     run_i <- 1
+    n_resamples <- 1E3
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -53,12 +53,6 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
 
 stopifnot(sessions %in% c("baseline", "proactive", "reactive"))
 stopifnot(measure %in% c("crcor", "cveuc"))
-
-if (sessions == "reactive" && ttype_subset == "bias") {
-    expected_min <- 6
-} else if (sessions == "proactive") {
-    expected_min <- 3
-}
 
 atlas <- read_atlas(roiset)
 rois <- names(atlas$roi)
@@ -96,7 +90,11 @@ res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %d
             scale = TRUE
         )
     } else if (measure == "crcor") {    ## cross-run correlation (with downsampling)
-        crcor(B$run1, B$run2, n_resamples = n_resamples, expected_min = expected_min)
+        crcor(
+            B$run1, B$run2, 
+            n_resamples = n_resamples, 
+            expected_min = expected_min[[paste0(ses, "_", ttype_subset)]]
+            )
     }
 
 }

@@ -99,7 +99,7 @@ expected_min <- list(
 
 expected <- list(
     glmname = c("lsall_1rpm", "lss_1rpm", "condition_1rpm", "lsall_acompcor06_1rpm"),
-    prewh   = c("none", "resid", "obs", "rest"),
+    prewh   = c("none", "obsresamp", "obsresampbias", "obsresamppc50", "obsall"),
     roiset  = 
         c("Schaefer2018Dev", "Schaefer2018Network", "Schaefer2018Parcel", "Glasser2016Network", "Glasser2016Parcel")
 )
