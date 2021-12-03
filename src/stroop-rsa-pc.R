@@ -285,21 +285,17 @@ read_trialinfo <- function() {
     dplyr::arrange(b, "subj", "wave", "session", "run", "trial_num")    ## sort to match col order of fmri beta matrix
 }
 
-## classdef: "atlas"
-## see here for more: https://github.com/mcfreund/psychomet/tree/master/in
 
-read_atlas <- function(
-    roiset = "Schaefer2018Dev", 
-    dir_atlas = "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/"
-    ) {
+read_atlas <- function(roiset = "Schaefer2018Dev") {
     
-    configured <- c("Schaefer2018Dev", "Schaefer2018Parcel", "Schaefer2018Network")
+    configured <- c("Schaefer2018Dev", "Schaefer2018Parcel", "Schaefer2018Network", "Glasser2016Parcel")
     if (!roiset %in% configured) stop("roiset not configured")
     
     atlas <- list()
 
     if (grepl("Schaefer2018", roiset)) {
-
+        
+        dir_atlas <- "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/"
         atlas$data <-
             c(
             gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_L.label.gii"))$data[[1]],
@@ -319,7 +315,25 @@ read_atlas <- function(
             atlas$rois <- split(atlas$key, atlas$key)
         }
 
-    } else if (roiset == "Glasser2016") {
+    } else if (grepl("Glasser2016", roiset)) {
+        
+        dir_atlas <- here::here("in", "mmp")
+        atlas$data <-
+            c(
+                gifti::read_gifti(file.path(dir_atlas, "lh.HCP-MMP1_fsaverage5.gii"))$data[[1]],
+                gifti::read_gifti(file.path(dir_atlas, "rh.HCP-MMP1_fsaverage5.gii"))$data[[1]] + 180
+            )
+        atlas$key <- data.table::fread(here::here("in", "mmp", "mmp.csv"))$roi
+        
+        if (roiset == "Glasser2016Superparcel") {
+            ## jneurosci definitions
+            ## see https://github.com/mcfreund/stroop-rsa/blob/master/code/write_masks.R
+        } else if (roiset == "Glasser2016Parcel") {
+            atlas$rois <- split(atlas$key, atlas$key)
+        } else if (roiset == "Glasser2016Network") {
+            ## coleanticevic definitions:
+            ## see https://github.com/mcfreund/stroop-rsa/blob/master/code/write_masks.R
+        }
 
     }
 
