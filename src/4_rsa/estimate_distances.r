@@ -11,7 +11,6 @@
 ##  - ...
 ## --------------------------------------------------------------------------------------------------------------------
 
-
 ## setup ----
 
 
@@ -40,8 +39,8 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
     measure <- "crcor"  ## crcor
     subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
     waves <- c("wave1", "wave2")
-    sessions <- "reactive"
-    ttype_subset <- "bias"
+    sessions <- "proactive"
+    ttype_subset <- "pc50"
     ii <- 1
     n_cores <- 10
     run_i <- 1
@@ -103,7 +102,9 @@ stopCluster(cl)
 
 ## write arrays within hdf5 file
 
-fname <- construct_filename_rdm(measure = measure, glmname = glmname, roiset = roiset, prewh = prewh)
+fname <- construct_filename_rdm(
+    measure = measure, glmname = glmname, ttype_subset = ttype_subset, roiset = roiset, prewh = prewh
+    )
 
 if (!file.exists(fname)) h5createFile(fname)
 for (sub in subjects) {

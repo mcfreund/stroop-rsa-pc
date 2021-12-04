@@ -501,12 +501,13 @@ construct_filenames_gifti <- function(
 
 
 construct_filename_weights <- function(
-    measure, subjlist, glmname, roiset, prewh,
+    measure, subjlist, glmname, ttype_subset, roiset, prewh,
     prefix = "weights", base_dir = here::here("out", "res")
     ) {
     paste0(
         base_dir, .Platform$file.sep, 
-        prefix, "-", measure, "__subjlist-", subjlist, "__glm-", glmname, "__roiset-", roiset, "__prewh-", prewh, ".csv"
+        prefix, "-", measure, "__subjlist-", subjlist, "__glm-", glmname, "__ttype-", ttype_subset,
+        "__roiset-", roiset, "__prewh-", prewh, ".csv"
         )
 }
 
@@ -546,11 +547,12 @@ construct_filename_weights <- function(
 # .construct_dsetname_rdm
 
 construct_filename_rdm <- function(
-    measure, glmname, roiset, prewh, 
+    measure, glmname, ttype_subset, roiset, prewh, 
     base_dir = here::here("out", "res")
     ){
     paste0(
-        base_dir, .Platform$file.sep, "rdm-", measure, "__glm-", glmname, "__roiset-", roiset, "__prewh-", prewh, ".h5"
+        base_dir, .Platform$file.sep, 
+        "rdm-", measure, "__glm-", glmname, "__ttype-", ttype_subset,  "__roiset-", roiset, "__prewh-", prewh, ".h5"
         )
 }
 
@@ -638,8 +640,9 @@ read_dset <- function(file_name, dset_name, read_colnames = TRUE) {
 
 read_rdms <- function(
     .measure, .glmname, .roiset, .prewh, .subjects, .session, .waves,
-    .ttypes1 = ttypes_by_run[[.session]]$run1, 
-    .ttypes2 = ttypes_by_run[[.session]]$run2, 
+    .ttype_subset = ttype_subset,
+    .ttypes1 = NULL, 
+    .ttypes2 = NULL, 
     .rois = names(atlas$rois)
     ) {
     stopifnot(length(.ttypes1) == length(.ttypes2))
@@ -656,7 +659,9 @@ read_rdms <- function(
         dimnames = list(dim1 = .ttypes1, dim2 = .ttypes2, roi = .rois, subject = .subjects, wave = .waves)
         )
     
-    fname <- construct_filename_rdm(measure = .measure, glmname = .glmname, roiset = .roiset, prewh = .prewh)
+    fname <- construct_filename_rdm(
+        measure = .measure, glmname = .glmname, ttype_subset = .ttype_subset, roiset = .roiset, prewh = .prewh
+        )
     fid <- rhdf5::H5Fopen(fname)
     for (.subject in .subjects) {
         for (.wave in .waves) {
