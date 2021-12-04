@@ -18,15 +18,15 @@
 ## packages and sourced variables
 
 library(colorout)
-library(here)
-library(dplyr)
+suppressMessages(library(here))
+suppressMessages(library(dplyr))
 library(tidyr)
-library(data.table)
-library(gifti)
+suppressMessages(library(data.table))
+suppressMessages(library(gifti))
 library(abind)
 library(rhdf5)
 library(foreach)
-library(doParallel)
+suppressMessages(library(doParallel))
 source(here("src", "stroop-rsa-pc.R"))
 
 ## set variables

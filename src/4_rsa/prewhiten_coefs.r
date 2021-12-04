@@ -17,16 +17,16 @@
 
 ## packages and sourced variables
 
-library(here)
-library(dplyr)
+suppressMessages(library(here))
+suppressMessages(library(dplyr))
 library(tidyr)
-library(data.table)
-library(gifti)
+suppressMessages(library(data.table))
+suppressMessages(library(gifti))
 library(abind)
 library(rhdf5)
 library(foreach)
-library(doParallel)
-library(CovTools)
+suppressMessages(library(doParallel))
+suppressMessages(library(CovTools))
 library(pracma)
 source(here("src", "stroop-rsa-pc.R"))
 
