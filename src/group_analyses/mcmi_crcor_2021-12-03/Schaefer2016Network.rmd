@@ -1,0 +1,289 @@
+---
+title: "MC vs MI wave 1 :: ttypes: `r params$ttype_subset`, prewh: `r params$prewh`"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 2
+        toc_float: true
+        number_sections: true
+        df_print: paged
+        code_folding: hide
+params:
+    ttype_subset: "pc50"
+    prewh: "none"
+---
+
+
+```{r setup, results = FALSE, message = FALSE}
+
+## libraries
+
+library(colorout)
+library(here)
+library(data.table)
+source(here("src", "stroop-rsa-pc.R"))
+#render_report(name = "Schaefer2016Network", src_dir = "group_analyses/mcmi_crcor_2021-12-03", params = list(ttype_subset = "bias", prewh = "none"))
+#render_report(name = "Schaefer2016Network", src_dir = "group_analyses/mcmi_crcor_2021-12-03", params = list(ttype_subset = "pc50", prewh = "none"))
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggridges)
+library(abind)
+
+## settings
+opts_chunk$set(echo = TRUE)
+theme_set(theme_bw(base_size = 10))
+
+#prewh <- "none"
+#ttype_subset <- "bias"
+
+ttype_subset <- params$ttype_subset
+prewh <- params$prewh
+
+## constants
+
+subjlist <- "mcmi"
+glmname <- "lsall_1rpm"
+roiset <- "Schaefer2018Network"
+measure <- "crcor"
+subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
+atlas <- read_atlas(roiset)
+sessions <- c("baseline", "proactive")
+
+## read subject RDMs:
+rdm <- enlist(sessions)
+for (session in sessions) {
+    rdm[[session]] <- 
+        read_rdms(
+            .measure = measure, .prewh = prewh,
+            .glmname = glmname, .roiset = roiset, .waves = "wave1",
+            .session = session, .subjects = subjects,
+            .ttype_subset = ttype_subset,
+            .ttypes1 = intersect(ttypes_by_run[[session]]$run1, ttypes[[ttype_subset]]),
+            .ttypes2 = intersect(ttypes_by_run[[session]]$run2, ttypes[[ttype_subset]]),
+            .rois = names(atlas$rois)
+        )
+}
+
+
+## read regression weights:
+file_name <- 
+    construct_filename_weights(
+        measure = measure, subjlist = subjlist, glmname = glmname, ttype_subset = ttype_subset,
+        roiset = roiset, prewh = prewh
+    )
+dat <- fread(file_name)
+
+
+## calculate
+
+## for group stats:
+dat_sum <- dat %>% 
+    group_by(session, term, roi) %>%
+    summarize(
+        t_stat = t.test(b)$statistic, 
+        p = t.test(b, alternative = "greater")$p.value
+        )
+
+dat_contr <- dat %>% 
+    pivot_wider(names_from = "session", values_from = "b") %>%
+    mutate(b_mimc = proactive-baseline) %>%
+    group_by(term, roi) %>%
+    summarize(
+        t_stat = t.test(b_mimc)$statistic, 
+        p = t.test(b_mimc)$p.value
+        )
+
+```
+
+
+# Model RDMs
+
+```{r fig.show = "hold", out.width = "25%"}
+
+for (session in sessions) {
+
+    for (mod in models$crcor) {
+        rdm_models <- 
+            read_model_rdm(
+                model = mod, measure_type = "similarity", session = session, ttype_subset = ttype_subset
+            )
+        p <- rdm_models %>% 
+            melt_mat %>% 
+            plot_melted_mat(add_greyscale_gradient = FALSE) + 
+            scale_fill_viridis_c() +
+            labs(title = paste0(session, " ", mod), x = "Run 2", y = "Run 1") + 
+            theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "none")
+
+        print(p)
+    }
+
+}
+```
+
+# Observed RDMs
+
+## Group-mean matrices
+
+```{r fig.width = 10, fig.height = 3.5}
+
+for (session in sessions) {
+
+    p <- rdm[[session]] %>%
+        atanh %>%
+        apply(c("dim1", "dim2", "roi", "wave"), mean) %>%
+        tanh %>%
+        melt_mat %>%
+        plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+        scale_fill_viridis_c() +
+        facet_grid(cols = vars(roi), scales = "free") +
+        theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+        labs(title = paste0("Group-mean matrix: ", session), x = "Run 2", y = "Run 1")
+    
+    plot(p)
+
+}
+
+```
+
+## Single-subject matrices
+
+```{r fig.width = 10, fig.height = 9}
+
+for (session in sessions) {
+
+    p <- rdm[[session]][, , , 1:5, ] %>%
+        melt_mat %>%
+        plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
+        scale_fill_viridis_c() +
+        facet_grid(vars(subject), vars(roi), scales = "free") +
+        theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
+        labs(title = paste0("Single-subject matrix: ", session), x = "Run 2", y = "Run 1")
+    
+    plot(p)
+
+}
+
+```
+
+
+# Group stats (model fits)
+
+## Session means
+
+```{r}
+
+dat %>%
+
+    filter(term %in% c("conjunction", "distractor", "incongruency", "target")) %>%
+    
+    ggplot(aes(roi, b, color = session, fill = session)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(
+        fun.data = "mean_cl_boot", position = position_dodge(width = 0.5), geom = "errorbar",
+        size = 1.5, width = 0.5
+     ) +
+    stat_summary(fun = "mean", position = position_dodge(width = 0.5), geom = "point", size = 1, fill = "black") +
+    facet_grid(cols = vars(term)) +
+    coord_flip() +
+    scale_color_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "Group-level means")
+
+dat_sum %>%
+
+    filter(term %in% c("conjunction", "distractor", "incongruency", "target")) %>%
+    
+    ggplot(aes(roi, t_stat, fill = session)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun = "mean", position = position_dodge(width = 1/3), geom = "col", width = 1/3, color = "black") +
+    facet_grid(cols = vars(term)) +
+    coord_flip() +
+    scale_fill_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(title = "group-level t stats")
+
+```
+
+
+## MI - MC contrast (Proactive - Baseline)
+
+
+```{r}
+
+dat %>%
+
+    filter(term %in% c("conjunction", "distractor", "incongruency", "target")) %>%
+
+    pivot_wider(names_from = "session", values_from = "b") %>%
+    mutate(b_mimc = proactive-baseline) %>%
+
+    ggplot(aes(roi, b_mimc)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(
+        fun.data = "mean_cl_boot", position = position_dodge(width = 0.5), geom = "errorbar",
+        size = 1.5, width = 0.5, color = "grey40"
+     ) +
+    stat_summary(fun = "mean", position = position_dodge(width = 0.5), geom = "point", size = 1.5, fill = "black") +
+    facet_grid(cols = vars(term)) +
+    coord_flip() +
+    theme(legend.position = "top") +
+    labs(
+        title = "Group-level means: Proactive-Baseline contrast",
+        y = "RSA model weight: proactive - baseline",
+        x = roiset
+        )
+
+
+dat_contr %>%
+
+    filter(term %in% c("conjunction", "distractor", "incongruency", "target")) %>%
+    
+    ggplot(aes(roi, t_stat)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun = "mean", position = position_dodge(width = 1/3), geom = "col", width = 1/3, color = "black") +
+    facet_grid(cols = vars(term)) +
+    coord_flip() +
+    scale_fill_brewer(type = "qual", palette = 2) +
+    theme(legend.position = "top") +
+    labs(
+        title = "Group-level t stats: Proactive-Baseline contrast",
+        y = "t stat on RSA model weight: proactive - baseline",
+        x = roiset
+        )
+
+```
+
+
+
+
+# table
+
+## Session means
+
+
+```{r}
+
+dat_sum_w <- 
+    dat_sum %>%
+    filter(term %in% c("conjunction", "distractor", "incongruency", "target")) %>%
+    pivot_wider(names_from = "session", values_from = c("t_stat", "p")) %>%
+    full_join(dat_contr, by = c("term", "roi")) %>%
+    rename(
+        t_stat_mc = t_stat_baseline, 
+        t_stat_mi = t_stat_proactive, 
+        p_mc = p_baseline, 
+        p_mi = p_proactive,
+        t_stat_mimc = t_stat,
+        p_mimc = p
+        )
+
+dat_sum_w %>% filter(p_mi < 0.05 | p_mc < 0.05) %>% arrange(term, roi)
+
+```
+
+All significant ROIs at $\alpha < 0.05$ uncorrected.
+Sorted by `term` then `roi`.
+`*_mimc` columns show the MI-MC (Proactive-Baseline) contrast statistics.
+
