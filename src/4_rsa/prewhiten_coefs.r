@@ -36,12 +36,12 @@ task <- "Stroop"
 
 if (interactive()) { 
     glmname <- "lsall_1rpm"
-    roiset <- "Schaefer2018Dev"
-    prewh <- "obsresampbias"  ## obsresamp, obsall, obsresampbias, obsresamppc50
-    subjlist <- "ispc_retest"
-    subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
-    waves <- c("wave1", "wave2")
-    sessions <- "reactive"
+    roiset <- "Schaefer2018Network"
+    prewh <- "obsresamppc50"  ## obsresamp, obsall, obsresampbias, obsresamppc50
+    subjlist <- "mcmi"
+    subjects <- fread(here(paste0("out/subjlist_", subjlist, ".txt")))[[1]][1:5]
+    waves <- "wave1"
+    sessions <- "proactive"
     n_cores <- 10
     ii <- 2#321  ## Vis: 331, SomMot: 341
     overwrite <- FALSE
@@ -86,6 +86,12 @@ registerDoParallel(cl)
 res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
     
     input_val <- input[ii, ]
+    subject <- input_val[, subj]
+    session <- input_val[, session]
+    wave <- input_val[, wave]
+    run <- input_val[, run]
+    roi <- input_val[, roi]
+
     B <- read_dset(input_val$file_name, input_val$dset_name)
     
     ## remove trial-wise variance due to conditions from each voxel
@@ -106,7 +112,7 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
             resample_idx = get_resampled_idx(
                 conditions = rownames(resids), 
                 n_resamples, 
-                expected_min = expected_min[[paste0(ses, "_", ttype_subset)]])
+                expected_min = expected_min[[paste0(session, "_", ttype_subset)]]
                 ),
             apply_fun = function(.x) CovEst.2010OAS(t(.x))$S
             )
@@ -119,12 +125,12 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
     write_dset(
         mat = B_white, 
         dset_prefix = "coefs", 
-        subject = input_val[, subj], 
-        session = input_val[, session], 
-        wave = input_val[, wave], 
-        run = input_val[, run], 
+        subject = subject, 
+        session = session, 
+        wave = wave, 
+        run = run, 
         roiset = roiset, 
-        roi = input_val[, roi],
+        roi = roi,
         glmname = glmname,
         prewh = prewh, 
         write_colnames = TRUE
