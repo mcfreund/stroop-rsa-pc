@@ -122,7 +122,7 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
     W <- sqrtm(S)$Binv  ## sqrt of inverse
     B_white <- crossprod(W, B)
     
-    write_dset(
+    out <- write_dset(
         mat = B_white, 
         dset_prefix = "coefs", 
         subject = subject, 
@@ -135,6 +135,11 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
         prewh = prewh, 
         write_colnames = TRUE
         )
+    
+    rm(B, X, resids, S, W, B_white)
+    gc()  ## avoid memory leak
+
+    return(out)  ## returns metadata
 
 }
 stopCluster(cl)
