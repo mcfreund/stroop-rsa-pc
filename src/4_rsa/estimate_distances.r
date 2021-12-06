@@ -16,7 +16,6 @@
 
 ## packages and sourced variables
 
-library(colorout)
 suppressMessages(library(here))
 suppressMessages(library(dplyr))
 library(tidyr)
