@@ -55,6 +55,7 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
 
 stopifnot(sessions %in% c("baseline", "proactive", "reactive"))
 stopifnot(measure %in% c("crcor", "cveuc"))
+if (!exists("suffix")) suffix <- ""
 
 atlas <- read_atlas(roiset)
 rois <- names(atlas$roi)
@@ -119,6 +120,6 @@ data <- separate(data, subject_wave_session, into = c("subject", "wave", "sessio
 
 fout <- construct_filename_weights(
     measure = measure, subjlist = subjlist, glmname = glmname, roiset = roiset, ttype_subset = ttype_subset, 
-    prewh = prewh
+    prewh = prewh, suffix = suffix
     )
 fwrite(data, fout)
