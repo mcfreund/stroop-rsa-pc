@@ -1,4 +1,4 @@
-## mimc (proactive + baseline wave1) analysis for alt glms ----
+## MCMI analysis: baseline wave1, proactive wave 1 ----
 
 
 ## 1. initial runthru:
@@ -25,9 +25,10 @@ Rscript ./src/4_rsa/parcellate_giftis.r \
     --subjlist $subjlist \
     --waves $wave \
     --sessions $sessions \
-    --n_cores 26
+    --n_cores 26 \
+    --overwrite "FALSE"
 
-## started at 2:15p, 2 dec
+## NB: runtime one iteration (1E4 resamples) ~ 1.5 hr
 for ttype_subset in ${ttype_subsets[@]}
 do
     Rscript ./src/4_rsa/estimate_distances.r \
