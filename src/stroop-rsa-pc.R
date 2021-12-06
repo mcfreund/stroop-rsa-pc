@@ -708,12 +708,12 @@ resample_apply_combine <- function(
     n_resamples <- nrow(resample_idx)
 
     if (is.function(combine_fun)) {
-    res <- vector("list", n_resamples)
-    for (ii in seq_len(n_resamples)) {
-        idx <- resample_idx[ii, ]
-        xii <- x[, idx, drop = FALSE]
-        res[[ii]] <- apply_fun(xii)
-    }
+        res <- vector("list", n_resamples)
+        for (ii in seq_len(n_resamples)) {
+            idx <- resample_idx[ii, ]
+            xii <- x[, idx, drop = FALSE]
+            res[[ii]] <- apply_fun(xii)
+        }
         res <- combine_fun(res)
     } else if (combine_fun == "iterative_add") {
         if (is.null(outdim)) stop("outdim must be specified when iterative_add == TRUE")
