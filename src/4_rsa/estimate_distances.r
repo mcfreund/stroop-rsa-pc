@@ -126,14 +126,14 @@ stopCluster(cl)
 if (!file.exists(fname)) h5createFile(fname)
 outnames <- unique(rbindlist(l)[, .(subj, wave, session)])
 for (row_i in seq_len(nrow(outnames))) {
-            
+
     nm <- paste0(outnames[row_i, ], collapse = "__")
 
-            ## extract data and concatenate into 3D array (RDM, roi)
-            dat <- res[grep(nm, names(res))]
-            dat <- abind(dat, rev.along = 0)
-            dimnames(dat)[[3]] <- gsub(paste0(nm, "__"), "", dimnames(dat)[[3]])
-            
-            h5write(dat, fname, nm)
+    ## extract data and concatenate into 3D array (RDM, roi)
+    dat <- res[grep(nm, names(res))]
+    dat <- abind(dat, rev.along = 0)
+    dimnames(dat)[[3]] <- gsub(paste0(nm, "__"), "", dimnames(dat)[[3]])
+    
+    h5write(dat, fname, nm)
 
-        }
+}
