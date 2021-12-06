@@ -700,18 +700,35 @@ get_resampled_idx <- function(conditions, n_resamples, expected_min, seed = 0) {
 resample_apply_combine <- function(
     x, resample_idx,
      apply_fun = identity, 
-     combine_fun = function(.x) Reduce("+", .x) / length(.x)
+     combine_fun = function(.x) Reduce("+", .x) / length(.x),
+     outdim = NULL
      ) {
     stopifnot(is.matrix(x) || is.matrix(resample_idx))
 
     n_resamples <- nrow(resample_idx)
+
+    if (is.function(combine_fun)) {
     res <- vector("list", n_resamples)
     for (ii in seq_len(n_resamples)) {
         idx <- resample_idx[ii, ]
         xii <- x[, idx, drop = FALSE]
         res[[ii]] <- apply_fun(xii)
     }
+        res <- combine_fun(res)
+    } else if (combine_fun == "iterative_add") {
+        if (is.null(outdim)) stop("outdim must be specified when iterative_add == TRUE")
+        res <- list(matrix(0, nrow = outdim[1], ncol = outdim[2]))  ## wrap in list so modify in place
+        #res <- matrix(0, nrow = outdim[1], ncol = outdim[2])
+        for (ii in seq_len(n_resamples)) {
+            idx <- resample_idx[ii, ]
+            xii <- x[, idx, drop = FALSE]
+            res[[1]] <- res[[1]] + apply_fun(xii)/n_resamples
+            #res <- res + apply_fun(xii)/n_resamples
+        }
+        res <- res[[1]]
+    }
 
-    combine_fun(res)
+    res
 
 }
+

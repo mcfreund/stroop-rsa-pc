@@ -114,7 +114,9 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
                 n_resamples, 
                 expected_min = expected_min[[paste0(session, "_", ttype_subset)]]
                 ),
-            apply_fun = function(.x) CovEst.2010OAS(t(.x))$S
+            apply_fun = function(.x) CovEst.2010OAS(t(.x))$S,
+            combine_fun = "iterative_add",
+            outdim = c(ncol(resids), ncol(resids))
             )
 
     }
