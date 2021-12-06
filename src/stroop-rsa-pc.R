@@ -502,12 +502,12 @@ construct_filenames_gifti <- function(
 
 construct_filename_weights <- function(
     measure, subjlist, glmname, ttype_subset, roiset, prewh,
-    prefix = "weights", base_dir = here::here("out", "res")
+    prefix = "weights", base_dir = here::here("out", "res"), suffix = ""
     ) {
     paste0(
         base_dir, .Platform$file.sep, 
         prefix, "-", measure, "__subjlist-", subjlist, "__glm-", glmname, "__ttype-", ttype_subset,
-        "__roiset-", roiset, "__prewh-", prewh, ".csv"
+        "__roiset-", roiset, "__prewh-", prewh, suffix, ".csv"
         )
 }
 
