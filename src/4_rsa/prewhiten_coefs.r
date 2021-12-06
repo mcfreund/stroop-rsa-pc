@@ -119,11 +119,8 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
 
     }
 
-    W <- sqrtm(S)$Binv  ## sqrt of inverse
-    B_white <- crossprod(W, B)
-    
     out <- write_dset(
-        mat = B_white, 
+        mat = crossprod(sqrtm(S)$Binv, B),  ## apply sqrt of inverse directly (save memory)
         dset_prefix = "coefs", 
         subject = subject, 
         session = session, 
@@ -135,9 +132,8 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
         prewh = prewh, 
         write_colnames = TRUE
         )
-    
-    rm(B, X, resids, S, W, B_white)
-    gc()  ## avoid memory leak
+    rm(S)
+    gc()
 
     return(out)  ## returns metadata
 
