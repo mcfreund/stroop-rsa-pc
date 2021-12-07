@@ -58,3 +58,55 @@ do
     done
 done
 
+
+## 2. prewhiten coefs
+unset prewh
+prewhs=("obspc50" "obsbias")
+for prewh in ${prewhs[@]}
+do
+    echo start: $prewh "baseline wave2" $(date)
+    Rscript ./src/4_rsa/prewhiten_coefs.r \
+        --glmname $glmname \
+        --roiset $roiset \
+        --subjlist $subjlist \
+        --waves "wave2" \
+        --sessions "baseline" \
+        --prewh $prewh \
+        --n_cores 12 \
+        --overwrite "FALSE"
+    echo stop: $prewh "baseline wave2" $(date)
+done
+
+
+# for prewh in ${prewhs[@]}
+# do
+#     echo start: $prewh "proactive wave1" $(date)
+#     Rscript ./src/4_rsa/prewhiten_coefs.r \
+#         --glmname $glmname \
+#         --roiset $roiset \
+#         --subjlist $subjlist \
+#         --waves "wave1" \
+#         --sessions "proactive" \
+#         --prewh $prewh \
+#         --n_cores 12 \
+#         --overwrite "FALSE"
+#     echo stop: $prewh "proactive wave1" $(date)
+# done
+# for prewh in ${prewhs[@]}
+# do
+#     for seswav_i in ${!sessions[@]}
+#     do
+#         echo start: $prewh ${sessions[$seswav_i]} ${waves[$seswav_i]} $(date)
+#         Rscript ./src/4_rsa/prewhiten_coefs.r \
+#             --glmname $glmname \
+#             --roiset $roiset \
+#             --subjlist $subjlist \
+#             --waves $wave \
+#             --sessions $sessions \
+#             --prewh $prewh \
+#             --n_cores 12 \
+#             --overwrite "FALSE" \
+#             --n_resamples 100
+#         echo stop: $prewh ${sessions[$seswav_i]} ${waves[$seswav_i]} $(date)
+#     done
+# done
