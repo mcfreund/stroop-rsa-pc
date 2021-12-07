@@ -29,6 +29,7 @@ suppressMessages(library(doParallel))
 suppressMessages(library(CovTools))
 library(pracma)
 source(here("src", "stroop-rsa-pc.R"))
+library(profvis)
 
 ## set variables
 
@@ -37,9 +38,9 @@ task <- "Stroop"
 if (interactive()) { 
     glmname <- "lsall_1rpm"
     roiset <- "Schaefer2018Network"
-    prewh <- "obsresamppc50"  ## obsresamp, obsall, obsresampbias, obsresamppc50
+    prewh <- "obspc50"  ## obsresamp, obsall, obsresampbias, obsresamppc50, obsbias, obspc50
     subjlist <- "mcmi"
-    subjects <- fread(here(paste0("out/subjlist_", subjlist, ".txt")))[[1]][1:5]
+    subjects <- fread(here(paste0("out/subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
     sessions <- "proactive"
     n_cores <- 10
@@ -56,12 +57,14 @@ stopifnot(prewh %in% expected$prewh)
 atlas <- read_atlas(roiset)
 rois <- names(atlas$roi)
 
-if (prewh == "obsresamp") {
+if (prewh %in% c("obsresamp", "obsall")) {
     ttype_subset <- "all"
-} else if (prewh == "obsresampbias") {
+} else if (prewh %in% c("obsresampbias", "obsbias")) {
     ttype_subset <- "bias"
-} else if (prewh == "obsresamppc50") {
+} else if (prewh %in% c("obsresamppc50", "obspc50")) {
     ttype_subset <- "pc50"
+} else {
+    stop("unexpected input for prewh argument")
 }
 
 
@@ -84,7 +87,7 @@ if (!overwrite) {
 cl <- makeCluster(n_cores, type = "FORK", outfile = "")
 registerDoParallel(cl)
 res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
-    
+
     input_val <- input[ii, ]
     subject <- input_val[, subj]
     session <- input_val[, session]
@@ -99,14 +102,8 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
     resids <- resid(.lm.fit(X, t(B)))
     
     ## estimate covariance matrix of residuals and invert
-    if (prewh == "obsall") {
-
-        S <- CovEst.2010OAS(resids)$S
-
-    } else if (grepl("resamp", prewh)) {
-
-        resids <- resids[rownames(resids) %in% ttypes[[ttype_subset]], ]
-
+    resids <- resids[rownames(resids) %in% ttypes[[ttype_subset]], ]  ## extract specified trialtypes
+    if (grepl("resamp", prewh)) {
         S <- resample_apply_combine(
             x = t(resids), 
             resample_idx = get_resampled_idx(
@@ -118,11 +115,14 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
             combine_fun = "iterative_add",
             outdim = c(ncol(resids), ncol(resids))
             )
-
+    } else {
+        S <- CovEst.2010OAS(resids)
     }
+    
+    W <- crossprod(sqrtm(S$S)$Binv, B)  ## apply sqrt of inverse
 
     out <- write_dset(
-        mat = crossprod(sqrtm(S)$Binv, B),  ## apply sqrt of inverse directly (save memory)
+        mat = W,
         dset_prefix = "coefs", 
         subject = subject, 
         session = session, 
@@ -134,10 +134,9 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
         prewh = prewh, 
         write_colnames = TRUE
         )
-    rm(S)
-    gc()
 
-    return(out)  ## returns metadata
+    c(out, rho = S$rho)  ## returns metadata
+
 
 }
 stopCluster(cl)
