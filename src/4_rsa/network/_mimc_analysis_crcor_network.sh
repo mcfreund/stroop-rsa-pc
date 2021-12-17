@@ -95,38 +95,34 @@ done
 
 for ttype_subset in ${ttype_subsets[@]}
 do
-
-    ## use patterns with prewhitening method that matches ttype_subset:
-    if [[ $ttype_subset = "bias" ]]
-    then
-        prewh="obsbias"
-    else
-        prewh="obspc50"
-    fi
-
-    echo estimate $(date)
-    Rscript ./src/4_rsa/estimate_distances.r \
-        --glmname $glmname \
-        --roiset $roiset \
-        --subjlist $subjlist \
-        --waves "wave2" \
-        --sessions "baseline" \
-        --measure $measure \
-        --prewh $prewh \
-        --ttype_subset $ttype_subset \
-        --n_cores 26 \
-        --n_resamples 10000 \
-        --overwrite "FALSE"
-
-    echo regress: $(date)    
-    Rscript ./src/4_rsa/regress_distances.r \
-        --glmname $glmname \
-        --roiset $roiset \
-        --subjlist $subjlist \
-        --waves "wave2" \
-        --sessions "baseline" \
-        --measure $measure \
-        --prewh $prewh \
-        --ttype_subset $ttype_subset \
-        --suffix __seswave-baseline_wave2
+    echo starting $ttype_subset
+    for seswav_i in ${!sessions[@]}
+    do
+        for prewh in ${prewhs[@]}
+        do
+            Rscript ./src/4_rsa/estimate_distances.r \
+                --glmname $glmname \
+                --roiset $roiset \
+                --subjlist $subjlist \
+                --waves ${waves[$seswav_i]} \
+                --sessions ${sessions[$seswav_i]} \
+                --measure $measure \
+                --prewh $prewh \
+                --ttype_subset $ttype_subset \
+                --n_cores 12 \
+                --overwrite "FALSE" \
+                --n_resamples 10000
+                
+            Rscript ./src/4_rsa/regress_distances.r \
+                --glmname $glmname \
+                --roiset $roiset \
+                --subjlist $subjlist \
+                --waves ${waves[$seswav_i]} \
+                --sessions ${sessions[$seswav_i]} \
+                --measure $measure \
+                --prewh $prewh \
+                --ttype_subset $ttype_subset \
+                --suffix __seswave-${sessions[$seswav_i]}_${waves[$seswav_i]}
+        done
+    done
 done

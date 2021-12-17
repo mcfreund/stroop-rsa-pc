@@ -28,8 +28,8 @@ do
                 --measure $measure \
                 --prewh $prewh \
                 --ttype_subset $ttype_subset \
-                --n_cores 20 \
-                --overwrite "TRUE"
+                --n_cores 12 \
+                --overwrite "FALSE"
                 
             Rscript ./src/4_rsa/regress_distances.r \
                 --glmname $glmname \
