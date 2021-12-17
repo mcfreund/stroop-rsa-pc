@@ -77,36 +77,56 @@ do
     echo stop: $prewh "baseline wave2" $(date)
 done
 
+for prewh in ${prewhs[@]}
+do
+    echo start: $prewh "proactive wave1" $(date)
+    Rscript ./src/4_rsa/prewhiten_coefs.r \
+        --glmname $glmname \
+        --roiset $roiset \
+        --subjlist $subjlist \
+        --waves "wave1" \
+        --sessions "proactive" \
+        --prewh $prewh \
+        --n_cores 12 \
+        --overwrite "FALSE"
+    echo stop: $prewh "proactive wave1" $(date)
+done
 
-# for prewh in ${prewhs[@]}
-# do
-#     echo start: $prewh "proactive wave1" $(date)
-#     Rscript ./src/4_rsa/prewhiten_coefs.r \
-#         --glmname $glmname \
-#         --roiset $roiset \
-#         --subjlist $subjlist \
-#         --waves "wave1" \
-#         --sessions "proactive" \
-#         --prewh $prewh \
-#         --n_cores 12 \
-#         --overwrite "FALSE"
-#     echo stop: $prewh "proactive wave1" $(date)
-# done
-# for prewh in ${prewhs[@]}
-# do
-#     for seswav_i in ${!sessions[@]}
-#     do
-#         echo start: $prewh ${sessions[$seswav_i]} ${waves[$seswav_i]} $(date)
-#         Rscript ./src/4_rsa/prewhiten_coefs.r \
-#             --glmname $glmname \
-#             --roiset $roiset \
-#             --subjlist $subjlist \
-#             --waves $wave \
-#             --sessions $sessions \
-#             --prewh $prewh \
-#             --n_cores 12 \
-#             --overwrite "FALSE" \
-#             --n_resamples 100
-#         echo stop: $prewh ${sessions[$seswav_i]} ${waves[$seswav_i]} $(date)
-#     done
-# done
+
+for ttype_subset in ${ttype_subsets[@]}
+do
+
+    ## use patterns with prewhitening method that matches ttype_subset:
+    if [[ $ttype_subset = "bias" ]]
+    then
+        prewh="obsbias"
+    else
+        prewh="obspc50"
+    fi
+
+    echo estimate $(date)
+    Rscript ./src/4_rsa/estimate_distances.r \
+        --glmname $glmname \
+        --roiset $roiset \
+        --subjlist $subjlist \
+        --waves "wave2" \
+        --sessions "baseline" \
+        --measure $measure \
+        --prewh $prewh \
+        --ttype_subset $ttype_subset \
+        --n_cores 26 \
+        --n_resamples 10000 \
+        --overwrite "FALSE"
+
+    echo regress: $(date)    
+    Rscript ./src/4_rsa/regress_distances.r \
+        --glmname $glmname \
+        --roiset $roiset \
+        --subjlist $subjlist \
+        --waves "wave2" \
+        --sessions "baseline" \
+        --measure $measure \
+        --prewh $prewh \
+        --ttype_subset $ttype_subset \
+        --suffix __seswave-baseline_wave2
+done
