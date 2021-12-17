@@ -30,9 +30,9 @@ library(abind)
 opts_chunk$set(echo = TRUE)
 theme_set(theme_bw(base_size = 10))
 
-#prewh <- "none"
-#ttype_subset <- "bias"
-#measure <- "crcor"
+#prewh <- "obsbias"
+#ttype_subset <- "pc50"
+#measure <- "cveuc"
 measure <- params$measure
 ttype_subset <- params$ttype_subset
 prewh <- params$prewh
@@ -111,7 +111,7 @@ dat_contr <- dat %>%
 
 for (session in sessions) {
 
-    for (mod in models$crcor) {
+    for (mod in models[[measure]]) {
         rdm_models <- 
             read_model_rdm(
                 model = mod, measure_type = measure_type, session = session, ttype_subset = ttype_subset
