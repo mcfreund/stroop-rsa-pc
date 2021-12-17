@@ -40,10 +40,11 @@ task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
-    roiset <- "Schaefer2018Network"
-    subjlist <- "mcmi"
+    #roiset <- "Schaefer2018Parcel200"
+    roiset <- "Schaefer2018Parcel"
+    subjlist <- "mc1"
     subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]][1:5]
-    sessions <- c("baseline", "proactive")
+    sessions <- c("baseline")
     waves <- c("wave1")
     glm_i <- 1
     n_cores <- 10

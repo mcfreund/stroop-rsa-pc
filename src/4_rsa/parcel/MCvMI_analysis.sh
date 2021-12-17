@@ -14,24 +14,43 @@ n_cores=18
 overwrite="FALSE"
 n_resamples=10000
 
+## excluded due to missing (2021-12-17):
+# mc1 DMCC5820265 DMCC9478705
+# mi1 DMCC9478705
+# mc2 DMCC3963378
+# mi2 DMCC3963378 DMCC5009144
+
+
 for i in ${!subjlists[@]}
 do
 
     session=${sessions[$i]}
     wave=${waves[$i]}
     subjlist=${subjlists[$i]}
-    suffix=__seswave-$session_$wave
 
-    echo $session $wave $subjlist $suffix
+    echo $session $wave $subjlist
     
     Rscript ./src/4_rsa/parcellate_giftis.r \
         --glmname $glmname \
         --roiset $roiset \
         --subjlist $subjlist \
         --waves $wave \
-        --sessions $sessions \
+        --sessions $session \
         --n_cores $n_cores \
         --overwrite $overwrite
+
+done
+
+
+for i in ${!subjlists[@]}
+do
+
+    session=${sessions[$i]}
+    wave=${waves[$i]}
+    subjlist=${subjlists[$i]}
+    suffix="__seswave-"$session"_"$wave
+
+    echo $session $wave $subjlist $suffix
 
     for ttype_subset in ${ttype_subsets[@]}
     do
@@ -43,24 +62,25 @@ do
             --roiset $roiset \
             --subjlist $subjlist \
             --waves $wave \
-            --sessions $sessions \
+            --sessions $session \
             --measure $measure \
             --prewh $prewh \
             --ttype_subset $ttype_subset \
             --n_cores $n_cores \
-            --n_resamples $n_resamples
+            --n_resamples $n_resamples \
+            --overwrite $overwrite
             
         Rscript ./src/4_rsa/regress_distances.r \
             --glmname $glmname \
             --roiset $roiset \
             --subjlist $subjlist \
             --waves $wave \
-            --sessions $sessions \
+            --sessions $session \
             --measure $measure \
             --prewh $prewh \
             --ttype_subset $ttype_subset \
             --suffix $suffix
             
     done
-
+    
 done
