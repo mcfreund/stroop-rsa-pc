@@ -1,5 +1,5 @@
 ---
-title: "MC vs MI wave 1 :: ttypes: `r params$ttype_subset`, prewh: `r params$prewh`"
+title: "MI wave 1 vs MC wave 2 :: ttypes: `r params$ttype_subset`, prewh: `r params$prewh`, measure: `r params$measure`"
 output: 
     html_document:
         toc: true
@@ -11,6 +11,7 @@ output:
 params:
     ttype_subset: "pc50"
     prewh: "none"
+    measure: "crcor"
 ---
 
 
@@ -18,12 +19,6 @@ params:
 
 ## libraries
 
-library(colorout)
-library(here)
-library(data.table)
-source(here("src", "stroop-rsa-pc.R"))
-#render_report(name = "Schaefer2016Network", src_dir = "group_analyses/mcmi_crcor_2021-12-03", params = list(ttype_subset = "bias", prewh = "none"))
-#render_report(name = "Schaefer2016Network", src_dir = "group_analyses/mcmi_crcor_2021-12-03", params = list(ttype_subset = "pc50", prewh = "none"))
 library(knitr)
 library(dplyr)
 library(tidyr)
@@ -37,43 +32,55 @@ theme_set(theme_bw(base_size = 10))
 
 #prewh <- "none"
 #ttype_subset <- "bias"
-
+#measure <- "crcor"
+measure <- params$measure
 ttype_subset <- params$ttype_subset
 prewh <- params$prewh
+if (measure == "cveuc") {
+    measure_type <- "cvdistance"
+} else if (measure == "crcor") {
+    measure_type <- "similarity"
+}
 
 ## constants
 
-subjlist <- "mcmi"
 glmname <- "lsall_1rpm"
 roiset <- "Schaefer2018Network"
-measure <- "crcor"
+sessions <- c("baseline", "proactive")
+suffices <- c("proactive_wave1", "baseline_wave2")
+subjlist <- "mimc"
 subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
 atlas <- read_atlas(roiset)
-sessions <- c("baseline", "proactive")
 
 ## read subject RDMs:
-rdm <- enlist(sessions)
-for (session in sessions) {
-    rdm[[session]] <- 
+rdm <- enlist(suffices)
+for (suffix in suffices) {
+    session_wave <- strsplit(suffix, "_")[[1]]
+    rdm[[suffix]] <- 
         read_rdms(
             .measure = measure, .prewh = prewh,
-            .glmname = glmname, .roiset = roiset, .waves = "wave1",
-            .session = session, .subjects = subjects,
+            .glmname = glmname, .roiset = roiset, .waves = session_wave[2],
+            .session = session_wave[1], .subjects = subjects,
             .ttype_subset = ttype_subset,
-            .ttypes1 = intersect(ttypes_by_run[[session]]$run1, ttypes[[ttype_subset]]),
-            .ttypes2 = intersect(ttypes_by_run[[session]]$run2, ttypes[[ttype_subset]]),
+            .ttypes1 = intersect(ttypes_by_run[[session_wave[1]]]$run1, ttypes[[ttype_subset]]),
+            .ttypes2 = intersect(ttypes_by_run[[session_wave[1]]]$run2, ttypes[[ttype_subset]]),
             .rois = names(atlas$rois)
         )
 }
 
 
 ## read regression weights:
-file_name <- 
-    construct_filename_weights(
-        measure = measure, subjlist = subjlist, glmname = glmname, ttype_subset = ttype_subset,
-        roiset = roiset, prewh = prewh
-    )
-dat <- fread(file_name)
+
+dat <- enlist(suffices)
+for (suffix in suffices) {
+    file_name <- 
+        construct_filename_weights(
+            measure = measure, subjlist = subjlist, glmname = glmname, ttype_subset = ttype_subset,
+            roiset = roiset, prewh = prewh, suffix = paste0("__seswave-", suffix)
+        )
+    dat[[suffix]] <- fread(file_name)
+}
+dat <- rbindlist(dat)
 
 
 ## calculate
@@ -87,7 +94,7 @@ dat_sum <- dat %>%
         )
 
 dat_contr <- dat %>% 
-    pivot_wider(names_from = "session", values_from = "b") %>%
+    pivot_wider(id_cols = c(subject, term, roi), names_from = "session", values_from = "b") %>%
     mutate(b_mimc = proactive-baseline) %>%
     group_by(term, roi) %>%
     summarize(
@@ -107,7 +114,7 @@ for (session in sessions) {
     for (mod in models$crcor) {
         rdm_models <- 
             read_model_rdm(
-                model = mod, measure_type = "similarity", session = session, ttype_subset = ttype_subset
+                model = mod, measure_type = measure_type, session = session, ttype_subset = ttype_subset
             )
         p <- rdm_models %>% 
             melt_mat %>% 
@@ -128,9 +135,9 @@ for (session in sessions) {
 
 ```{r fig.width = 10, fig.height = 3.5}
 
-for (session in sessions) {
+for (suffix in suffices) {
 
-    p <- rdm[[session]] %>%
+    p <- rdm[[suffix]] %>%
         atanh %>%
         apply(c("dim1", "dim2", "roi", "wave"), mean) %>%
         tanh %>%
@@ -139,7 +146,7 @@ for (session in sessions) {
         scale_fill_viridis_c() +
         facet_grid(cols = vars(roi), scales = "free") +
         theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
-        labs(title = paste0("Group-mean matrix: ", session), x = "Run 2", y = "Run 1")
+        labs(title = paste0("Group-mean matrix: ", suffix), x = "Run 2", y = "Run 1")
     
     plot(p)
 
@@ -151,15 +158,15 @@ for (session in sessions) {
 
 ```{r fig.width = 10, fig.height = 9}
 
-for (session in sessions) {
+for (suffix in suffices) {
 
-    p <- rdm[[session]][, , , 1:5, ] %>%
+    p <- rdm[[suffix]][, , , 1:5, ] %>%
         melt_mat %>%
         plot_melted_mat(.row = "dim1", .col = "dim2", add_greyscale_gradient = FALSE) +
         scale_fill_viridis_c() +
         facet_grid(vars(subject), vars(roi), scales = "free") +
         theme(axis.text.x = element_text(angle = 90, hjust = 0), legend.position = "top") +
-        labs(title = paste0("Single-subject matrix: ", session), x = "Run 2", y = "Run 1")
+        labs(title = paste0("Single-subject matrix: ", suffix), x = "Run 2", y = "Run 1")
     
     plot(p)
 
@@ -176,7 +183,7 @@ for (session in sessions) {
 
 dat %>%
 
-    filter(term %in% c("conjunction", "distractor", "incongruency", "target")) %>%
+    filter(term %in% models[[measure]]) %>%
     
     ggplot(aes(roi, b, color = session, fill = session)) +
     geom_hline(yintercept = 0) +
@@ -193,7 +200,7 @@ dat %>%
 
 dat_sum %>%
 
-    filter(term %in% c("conjunction", "distractor", "incongruency", "target")) %>%
+    filter(term %in% models[[measure]]) %>%
     
     ggplot(aes(roi, t_stat, fill = session)) +
     geom_hline(yintercept = 0) +
@@ -214,9 +221,9 @@ dat_sum %>%
 
 dat %>%
 
-    filter(term %in% c("conjunction", "distractor", "incongruency", "target")) %>%
+    filter(term %in% models[[measure]]) %>%
 
-    pivot_wider(names_from = "session", values_from = "b") %>%
+    pivot_wider(id_cols = c(subject, term, roi), names_from = "session", values_from = "b") %>%
     mutate(b_mimc = proactive-baseline) %>%
 
     ggplot(aes(roi, b_mimc)) +
@@ -238,7 +245,7 @@ dat %>%
 
 dat_contr %>%
 
-    filter(term %in% c("conjunction", "distractor", "incongruency", "target")) %>%
+    filter(term %in% models[[measure]]) %>%
     
     ggplot(aes(roi, t_stat)) +
     geom_hline(yintercept = 0) +
@@ -267,7 +274,7 @@ dat_contr %>%
 
 dat_sum_w <- 
     dat_sum %>%
-    filter(term %in% c("conjunction", "distractor", "incongruency", "target")) %>%
+    filter(term %in% models[[measure]]) %>%
     pivot_wider(names_from = "session", values_from = c("t_stat", "p")) %>%
     full_join(dat_contr, by = c("term", "roi")) %>%
     rename(

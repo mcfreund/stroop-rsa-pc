@@ -267,12 +267,21 @@ Var <- function(x, dim = 1, ...) {
 
 ## writing rmarkdown reports
 
-render_report <- function(name, src_dir, params = NULL, ..., envir = new.env(), base_dir = here::here("src")) {
+render_report <- function(
+    name, src_dir, params = NULL, ..., envir = new.env(), base_dir = here::here("src")
+    ) {
   ## https://bookdown.org/yihui/rmarkdown/params-knit.html
+  
+  if (is.null(params)) {
+      output_file <- paste0(name, ".html")
+  } else {
+      output_file <- paste0(name, "__", paste0(paste0(names(params), "-", params), collapse = "__"), ".html")
+  }
+
   rmarkdown::render(
     file.path(base_dir, src_dir, paste0(name, ".rmd")), 
     params = params,
-    output_file = paste0(name, "__", paste0(params, collapse = "__"), ".html"),
+    output_file = output_file,
     envir = envir,
     ...
   )
