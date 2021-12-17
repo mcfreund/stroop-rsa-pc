@@ -31,7 +31,7 @@ fwrite(mimc_cotwin, here("out", "subjlist_mimc_cotwin.txt"), col.names = FALSE)
 
 ## per session*wave
 
-fwrite(s[session == "baseline" & wave == "wave1", "subj"], "subjlist_mc1.txt", col.names = FALSE)
-fwrite(s[session == "baseline" & wave == "wave2", "subj"], "subjlist_mc2.txt", col.names = FALSE)
-fwrite(s[session == "proactive" & wave == "wave1", "subj"], "subjlist_mi1.txt", col.names = FALSE)
-fwrite(s[session == "proactive" & wave == "wave2", "subj"], "subjlist_mi2.txt", col.names = FALSE)
+fwrite(s[session == "baseline" & wave == "wave1", "subj"], here("out", "subjlist_mc1.txt"), col.names = FALSE)
+fwrite(s[session == "baseline" & wave == "wave2", "subj"], here("out", "subjlist_mc2.txt"), col.names = FALSE)
+fwrite(s[session == "proactive" & wave == "wave1", "subj"], here("out", "subjlist_mi1.txt"), col.names = FALSE)
+fwrite(s[session == "proactive" & wave == "wave2", "subj"], here("out", "subjlist_mi2.txt"), col.names = FALSE)
