@@ -303,31 +303,39 @@ read_atlas <- function(
         if (roiset == "Schaefer2018Parcel200") {
 
             dir_atlas <- "/data/nil-external/ccp/freund/atlases/Schaefer200"
-            atlas$data <-
-                c(
-                gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_200Parcels_7Networks_order_10K_L.label.gii"))$data[[1]],
-                gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_200Parcels_7Networks_order_10K_R.label.gii"))$data[[1]] + 100
-                )
+            L <- gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_200Parcels_7Networks_order_10K_L.label.gii"))$data[[1]]
+            R <- gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_200Parcels_7Networks_order_10K_R.label.gii"))$data[[1]] + 100
+            R[R == 100] <- 0  ## reset to zero (zero is NA...)
+            atlas$data <- c(L, R)
             atlas$key <- data.table::fread(here::here("in", "atlas-key_schaefer200-07.csv"))$parcel
+            atlas$rois <- split(atlas$key, atlas$key)
 
         } else {
-            atlas$data <-
-                c(
-                gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_L.label.gii"))$data[[1]],
-                gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_R.label.gii"))$data[[1]] + 200
-                )
+            
+            L <- gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_L.label.gii"))$data[[1]]
+            R <- gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_R.label.gii"))$data[[1]] + 200
+            R[R == 200] <- 0  ## reset to zero (zero is NA...)
+            atlas$data <- c(L, R)
             atlas$key <- data.table::fread(here::here("in", "atlas-key_schaefer400-07.csv"))$parcel
+
             if (roiset == "Schaefer2018Dev") {
+
                 parcel_core32 <- atlas$key[core32]
                 parcel_vis <- atlas$key[grep("_Vis_", atlas$key)]
                 parcel_sommot <- atlas$key[grep("_SomMot_", atlas$key)]
                 parcels_dev <- c(core32 = list(parcel_core32), Vis = list(parcel_vis), SomMot = list(parcel_sommot))
                 atlas$rois <- c(setNames(as.list(parcel_core32), parcel_core32), parcels_dev)
+
             } else if (roiset == "Schaefer2018Network") {
+
                 atlas$rois <- split(atlas$key, get_network(atlas$key))
+
             } else if (roiset == "Schaefer2018Parcel") {
+
                 atlas$rois <- split(atlas$key, atlas$key)
+
             }
+
         }
 
     } else if (roiset == "Glasser2016") {
