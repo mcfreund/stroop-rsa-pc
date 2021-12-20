@@ -14,3 +14,4 @@ if ("measure" %in% names(args)) measure <- args$measure
 if ("ttype_subset" %in% names(args)) ttype_subset <- args$ttype_subset
 if ("expected_min" %in% names(args)) expected_min <- as.numeric(args$expected_min)
 if ("overwrite" %in% names(args)) overwrite <- args$overwrite == "TRUE"
+if ("suffix" %in% names(args)) suffix <- args$suffix

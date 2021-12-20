@@ -1,0 +1,5 @@
+These reports are subject to an error (bug) that was found on 2021-12-17.
+The bug was in how the Schaefer Atlas masks were defined.
+In the right hemisphere, values of zero (assigned to vertices that do not belong to any parcel/network) were mistakenly replaced with values of 200.
+Parcel 200 is a default mode parcel.
+This issue therefore makes the default mode network results uninterpretable.

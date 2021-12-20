@@ -11,22 +11,20 @@
 ##  - ...
 ## --------------------------------------------------------------------------------------------------------------------
 
-
 ## setup ----
 
 
 ## packages and sourced variables
 
-library(colorout)
-library(here)
-library(dplyr)
+suppressMessages(library(here))
+suppressMessages(library(dplyr))
 library(tidyr)
-library(data.table)
-library(gifti)
+suppressMessages(library(data.table))
+suppressMessages(library(gifti))
 library(abind)
 library(rhdf5)
 library(foreach)
-library(doParallel)
+suppressMessages(library(doParallel))
 source(here("src", "stroop-rsa-pc.R"))
 
 ## set variables
@@ -35,17 +33,18 @@ task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
-    roiset <- "Schaefer2018Dev"
+    roiset <- "Schaefer2018Network"
     prewh <- "none"
     measure <- "crcor"  ## crcor
-    subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
-    waves <- c("wave1", "wave2")
-    sessions <- "reactive"
-    ttype_subset <- "bias"
+    subjects <- fread(here("out/subjlist_mimc.txt"))[[1]]
+    waves <- "wave1"
+    sessions <- "proactive"
+    ttype_subset <- "pc50"
     ii <- 1
-    n_cores <- 10
+    n_cores <- 1
     run_i <- 1
-    n_resamples <- 1E3
+    n_resamples <- 1
+    overwrite <- FALSE
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -68,6 +67,27 @@ input <- construct_filenames_h5(
 )
 input[, g := paste0(subj, "__", wave, "__", session, "__", roi)]
 l <- split(input, by = "g")
+
+## skip computation of existing output files if overwrite == FALSE:
+
+fname <- construct_filename_rdm(
+    measure = measure, glmname = glmname, ttype_subset = ttype_subset, roiset = roiset, prewh = prewh
+    )  ## output file
+
+if (!overwrite) {
+    if (file.exists(fname)) {
+        group_name <- combo_paste(subjects, waves, sessions, sep = "__")
+        group_exists <- group_name %in% h5ls(fname)$name
+        if (any(group_exists)) {
+            existing_group_idx <- grep(paste0(group_name[group_exists], collapse = "|"), names(l))
+            l <- l[-existing_group_idx]
+            if (length(l) == 0L) stop("All to-be-written files already exist. Exiting...")
+        }
+    }
+}
+
+
+
 
 cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
@@ -103,27 +123,17 @@ stopCluster(cl)
 
 ## write arrays within hdf5 file
 
-fname <- construct_filename_rdm(measure = measure, glmname = glmname, roiset = roiset, prewh = prewh)
-
 if (!file.exists(fname)) h5createFile(fname)
-for (sub in subjects) {
+outnames <- unique(rbindlist(l)[, .(subj, wave, session)])
+for (row_i in seq_len(nrow(outnames))) {
+
+    nm <- paste0(outnames[row_i, ], collapse = "__")
+
+    ## extract data and concatenate into 3D array (RDM, roi)
+    dat <- res[grep(nm, names(res))]
+    dat <- abind(dat, rev.along = 0)
+    dimnames(dat)[[3]] <- gsub(paste0(nm, "__"), "", dimnames(dat)[[3]])
     
-    for (wav in waves) {
+    h5write(dat, fname, nm)
 
-        for (ses in sessions) {
-            
-            nm <- paste0(sub, "__", wav, "__", ses)
-            #group_name <- paste0("/", nm)            
-            #if (!group_name %in% h5ls(fname)$group) h5createGroup(fname, group_name)
-
-            ## extract data and concatenate into 3D array (RDM, roi)
-            dat <- res[grep(nm, names(res))]
-            dat <- abind(dat, rev.along = 0)
-            dimnames(dat)[[3]] <- gsub(paste0(nm, "__"), "", dimnames(dat)[[3]])
-            
-            h5write(dat, fname, nm)
-
-        }
-    }
 }
-
