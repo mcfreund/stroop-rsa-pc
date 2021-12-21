@@ -10,3 +10,5 @@ out/sim
 
 src/scratch
 misc/profile.html
+
+docs/*
