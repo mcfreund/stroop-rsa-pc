@@ -23,15 +23,15 @@
 ## packages and sourced variables
 
 library(colorout)
-library(here)
-library(dplyr)
+suppressMessages(library(here))
+suppressMessages(library(dplyr))
 library(tidyr)
-library(data.table)
-library(gifti)
+suppressMessages(library(data.table))
+suppressMessages(library(gifti))
 library(abind)
 library(rhdf5)
 library(foreach)
-library(doParallel)
+suppressMessages(library(doParallel))
 source(here("src", "stroop-rsa-pc.R"))
 
 ## set variables
@@ -40,10 +40,11 @@ task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
-    roiset <- "Schaefer2018Network"
-    subjlist <- "mcmi"
+    #roiset <- "Schaefer2018Parcel200"
+    roiset <- "Schaefer2018Parcel"
+    subjlist <- "mc1"
     subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]][1:5]
-    sessions <- c("baseline", "proactive")
+    sessions <- c("baseline")
     waves <- c("wave1")
     glm_i <- 1
     n_cores <- 10
@@ -87,6 +88,7 @@ res <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
     ses <- unique(input_val$session)
     run <- unique(input_val$run)
     run_i <- as.numeric(gsub("run", "", run))
+
     tlabels <- tinfo[.(sub, wav, ses, run_i), item]  ## get trialtypes
     if (glmname == "condition_1rpm") tlabels <- c(ttypes$bias, ttypes$pc50)
         
@@ -97,6 +99,14 @@ res <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
         rename_dim(tlabels) %>% ## add trialtypes to colnames
         .[, Var(., 2) != 0L] %>%  ## filter regressors that are all zero
         parcellate_data(atlas) ## split matrix into list of length n_roi
+    
+    out_names <- construct_filename_h5(subject = sub, wave = wav, session = ses, run = run, roiset = roiset, roi = rois)
+    if (!overwrite) {
+        is_extant <- file.exists(out_names)
+        if (all(is_extant)) return(list("All parcellated data files already exist. Skipping..."))
+        parcs <- parcs[!is_extant]
+    }
+
     nms <- Map(
         function(x, y, ...) write_dset(mat = x, roi = y, ...), 
         parcs, names(parcs),

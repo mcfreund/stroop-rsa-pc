@@ -17,18 +17,19 @@
 
 ## packages and sourced variables
 
-library(here)
-library(dplyr)
+suppressMessages(library(here))
+suppressMessages(library(dplyr))
 library(tidyr)
-library(data.table)
-library(gifti)
+suppressMessages(library(data.table))
+suppressMessages(library(gifti))
 library(abind)
 library(rhdf5)
 library(foreach)
-library(doParallel)
-library(CovTools)
+suppressMessages(library(doParallel))
+suppressMessages(library(CovTools))
 library(pracma)
 source(here("src", "stroop-rsa-pc.R"))
+library(profvis)
 
 ## set variables
 
@@ -36,12 +37,12 @@ task <- "Stroop"
 
 if (interactive()) { 
     glmname <- "lsall_1rpm"
-    roiset <- "Schaefer2018Dev"
-    prewh <- "obsresampbias"  ## obsresamp, obsall, obsresampbias, obsresamppc50
-    subjlist <- "ispc_retest"
-    subjects <- fread(here("out/subjlist_ispc_retest.txt"))[[1]][1:5]
-    waves <- c("wave1", "wave2")
-    sessions <- "reactive"
+    roiset <- "Schaefer2018Network"
+    prewh <- "obspc50"  ## obsresamp, obsall, obsresampbias, obsresamppc50, obsbias, obspc50
+    subjlist <- "mcmi"
+    subjects <- fread(here(paste0("out/subjlist_", subjlist, ".txt")))[[1]]
+    waves <- "wave1"
+    sessions <- "proactive"
     n_cores <- 10
     ii <- 2#321  ## Vis: 331, SomMot: 341
     overwrite <- FALSE
@@ -56,12 +57,14 @@ stopifnot(prewh %in% expected$prewh)
 atlas <- read_atlas(roiset)
 rois <- names(atlas$roi)
 
-if (prewh == "obsresamp") {
+if (prewh %in% c("obsresamp", "obsall")) {
     ttype_subset <- "all"
-} else if (prewh == "obsresampbias") {
+} else if (prewh %in% c("obsresampbias", "obsbias")) {
     ttype_subset <- "bias"
-} else if (prewh == "obsresamppc50") {
+} else if (prewh %in% c("obsresamppc50", "obspc50")) {
     ttype_subset <- "pc50"
+} else {
+    stop("unexpected input for prewh argument")
 }
 
 
@@ -84,8 +87,14 @@ if (!overwrite) {
 cl <- makeCluster(n_cores, type = "FORK", outfile = "")
 registerDoParallel(cl)
 res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
-    
+
     input_val <- input[ii, ]
+    subject <- input_val[, subj]
+    session <- input_val[, session]
+    wave <- input_val[, wave]
+    run <- input_val[, run]
+    roi <- input_val[, roi]
+
     B <- read_dset(input_val$file_name, input_val$dset_name)
     
     ## remove trial-wise variance due to conditions from each voxel
@@ -93,42 +102,41 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
     resids <- resid(.lm.fit(X, t(B)))
     
     ## estimate covariance matrix of residuals and invert
-    if (prewh == "obsall") {
-
-        S <- CovEst.2010OAS(resids)$S
-
-    } else if (grepl("resamp", prewh)) {
-
-        resids <- resids[rownames(resids) %in% ttypes[[ttype_subset]], ]
-
+    resids <- resids[rownames(resids) %in% ttypes[[ttype_subset]], ]  ## extract specified trialtypes
+    if (grepl("resamp", prewh)) {
         S <- resample_apply_combine(
             x = t(resids), 
             resample_idx = get_resampled_idx(
                 conditions = rownames(resids), 
                 n_resamples, 
-                expected_min = expected_min[[paste0(ses, "_", ttype_subset)]])
+                expected_min = expected_min[[paste0(session, "_", ttype_subset)]]
                 ),
-            apply_fun = function(.x) CovEst.2010OAS(t(.x))$S
+            apply_fun = function(.x) CovEst.2010OAS(t(.x))$S,
+            combine_fun = "iterative_add",
+            outdim = c(ncol(resids), ncol(resids))
             )
-
+    } else {
+        S <- CovEst.2010OAS(resids)
     }
-
-    W <- sqrtm(S)$Binv  ## sqrt of inverse
-    B_white <- crossprod(W, B)
     
-    write_dset(
-        mat = B_white, 
+    W <- crossprod(sqrtm(S$S)$Binv, B)  ## apply sqrt of inverse
+
+    out <- write_dset(
+        mat = W,
         dset_prefix = "coefs", 
-        subject = input_val[, subj], 
-        session = input_val[, session], 
-        wave = input_val[, wave], 
-        run = input_val[, run], 
+        subject = subject, 
+        session = session, 
+        wave = wave, 
+        run = run, 
         roiset = roiset, 
-        roi = input_val[, roi],
+        roi = roi,
         glmname = glmname,
         prewh = prewh, 
         write_colnames = TRUE
         )
+
+    c(out, rho = S$rho)  ## returns metadata
+
 
 }
 stopCluster(cl)

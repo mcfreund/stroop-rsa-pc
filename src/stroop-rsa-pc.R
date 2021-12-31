@@ -99,7 +99,7 @@ expected_min <- list(
 
 expected <- list(
     glmname = c("lsall_1rpm", "lss_1rpm", "condition_1rpm", "lsall_acompcor06_1rpm"),
-    prewh   = c("none", "obsresamp", "obsresampbias", "obsresamppc50", "obsall"),
+    prewh   = c("none", "obsresamp", "obsresampbias", "obsresamppc50", "obsall", "obsbias", "obspc50"),
     roiset  = 
         c("Schaefer2018Dev", "Schaefer2018Network", "Schaefer2018Parcel", "Glasser2016Network", "Glasser2016Parcel")
 )
@@ -267,12 +267,21 @@ Var <- function(x, dim = 1, ...) {
 
 ## writing rmarkdown reports
 
-render_report <- function(name, src_dir, params = NULL, ..., envir = new.env(), base_dir = here::here("src")) {
+render_report <- function(
+    name, src_dir, params = NULL, ..., envir = new.env(), base_dir = here::here("src")
+    ) {
   ## https://bookdown.org/yihui/rmarkdown/params-knit.html
+  
+  if (is.null(params)) {
+      output_file <- paste0(name, ".html")
+  } else {
+      output_file <- paste0(name, "__", paste0(paste0(names(params), "-", params), collapse = "__"), ".html")
+  }
+
   rmarkdown::render(
     file.path(base_dir, src_dir, paste0(name, ".rmd")), 
     params = params,
-    output_file = paste0(name, "__", paste0(params, collapse = "__"), ".html"),
+    output_file = output_file,
     envir = envir,
     ...
   )
@@ -288,12 +297,17 @@ read_trialinfo <- function() {
 
 read_atlas <- function(roiset = "Schaefer2018Dev") {
     
+<<<<<<< HEAD
     configured <- c("Schaefer2018Dev", "Schaefer2018Parcel", "Schaefer2018Network", "Glasser2016Parcel")
+=======
+    configured <- c("Schaefer2018Dev", "Schaefer2018Parcel", "Schaefer2018Network", "Schaefer2018Parcel200")
+>>>>>>> main
     if (!roiset %in% configured) stop("roiset not configured")
     
     atlas <- list()
 
     if (grepl("Schaefer2018", roiset)) {
+<<<<<<< HEAD
         
         dir_atlas <- "/data/nil-bluearc/ccp-hcp/DMCC_ALL_BACKUPS/ATLASES/"
         atlas$data <-
@@ -312,7 +326,45 @@ read_atlas <- function(roiset = "Schaefer2018Dev") {
         } else if (roiset == "Schaefer2018Network") {
             atlas$rois <- split(atlas$key, get_network(atlas$key))
         } else if (roiset == "Schaefer2018Parcel") {
+=======
+
+        if (roiset == "Schaefer2018Parcel200") {
+
+            dir_atlas <- "/data/nil-external/ccp/freund/atlases/Schaefer200"
+            L <- gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_200Parcels_7Networks_order_10K_L.label.gii"))$data[[1]]
+            R <- gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_200Parcels_7Networks_order_10K_R.label.gii"))$data[[1]] + 100
+            R[R == 100] <- 0  ## reset to zero (zero is NA...)
+            atlas$data <- c(L, R)
+            atlas$key <- data.table::fread(here::here("in", "atlas-key_schaefer200-07.csv"))$parcel
+>>>>>>> main
             atlas$rois <- split(atlas$key, atlas$key)
+
+        } else {
+            
+            L <- gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_L.label.gii"))$data[[1]]
+            R <- gifti::read_gifti(file.path(dir_atlas, "Schaefer2018_400Parcels_7Networks_order_10K_R.label.gii"))$data[[1]] + 200
+            R[R == 200] <- 0  ## reset to zero (zero is NA...)
+            atlas$data <- c(L, R)
+            atlas$key <- data.table::fread(here::here("in", "atlas-key_schaefer400-07.csv"))$parcel
+
+            if (roiset == "Schaefer2018Dev") {
+
+                parcel_core32 <- atlas$key[core32]
+                parcel_vis <- atlas$key[grep("_Vis_", atlas$key)]
+                parcel_sommot <- atlas$key[grep("_SomMot_", atlas$key)]
+                parcels_dev <- c(core32 = list(parcel_core32), Vis = list(parcel_vis), SomMot = list(parcel_sommot))
+                atlas$rois <- c(setNames(as.list(parcel_core32), parcel_core32), parcels_dev)
+
+            } else if (roiset == "Schaefer2018Network") {
+
+                atlas$rois <- split(atlas$key, get_network(atlas$key))
+
+            } else if (roiset == "Schaefer2018Parcel") {
+
+                atlas$rois <- split(atlas$key, atlas$key)
+
+            }
+
         }
 
     } else if (grepl("Glasser2016", roiset)) {
@@ -515,12 +567,13 @@ construct_filenames_gifti <- function(
 
 
 construct_filename_weights <- function(
-    measure, subjlist, glmname, roiset, prewh,
-    prefix = "weights", base_dir = here::here("out", "res")
+    measure, subjlist, glmname, ttype_subset, roiset, prewh,
+    prefix = "weights", base_dir = here::here("out", "res"), suffix = ""
     ) {
     paste0(
         base_dir, .Platform$file.sep, 
-        prefix, "-", measure, "__subjlist-", subjlist, "__glm-", glmname, "__roiset-", roiset, "__prewh-", prewh, ".csv"
+        prefix, "-", measure, "__subjlist-", subjlist, "__glm-", glmname, "__ttype-", ttype_subset,
+        "__roiset-", roiset, "__prewh-", prewh, suffix, ".csv"
         )
 }
 
@@ -560,11 +613,12 @@ construct_filename_weights <- function(
 # .construct_dsetname_rdm
 
 construct_filename_rdm <- function(
-    measure, glmname, roiset, prewh, 
+    measure, glmname, ttype_subset, roiset, prewh, 
     base_dir = here::here("out", "res")
     ){
     paste0(
-        base_dir, .Platform$file.sep, "rdm-", measure, "__glm-", glmname, "__roiset-", roiset, "__prewh-", prewh, ".h5"
+        base_dir, .Platform$file.sep, 
+        "rdm-", measure, "__glm-", glmname, "__ttype-", ttype_subset,  "__roiset-", roiset, "__prewh-", prewh, ".h5"
         )
 }
 
@@ -652,8 +706,9 @@ read_dset <- function(file_name, dset_name, read_colnames = TRUE) {
 
 read_rdms <- function(
     .measure, .glmname, .roiset, .prewh, .subjects, .session, .waves,
-    .ttypes1 = ttypes_by_run[[.session]]$run1, 
-    .ttypes2 = ttypes_by_run[[.session]]$run2, 
+    .ttype_subset = ttype_subset,
+    .ttypes1 = NULL, 
+    .ttypes2 = NULL, 
     .rois = names(atlas$rois)
     ) {
     stopifnot(length(.ttypes1) == length(.ttypes2))
@@ -670,7 +725,9 @@ read_rdms <- function(
         dimnames = list(dim1 = .ttypes1, dim2 = .ttypes2, roi = .rois, subject = .subjects, wave = .waves)
         )
     
-    fname <- construct_filename_rdm(measure = .measure, glmname = .glmname, roiset = .roiset, prewh = .prewh)
+    fname <- construct_filename_rdm(
+        measure = .measure, glmname = .glmname, ttype_subset = .ttype_subset, roiset = .roiset, prewh = .prewh
+        )
     fid <- rhdf5::H5Fopen(fname)
     for (.subject in .subjects) {
         for (.wave in .waves) {
@@ -709,18 +766,35 @@ get_resampled_idx <- function(conditions, n_resamples, expected_min, seed = 0) {
 resample_apply_combine <- function(
     x, resample_idx,
      apply_fun = identity, 
-     combine_fun = function(.x) Reduce("+", .x) / length(.x)
+     combine_fun = function(.x) Reduce("+", .x) / length(.x),
+     outdim = NULL
      ) {
     stopifnot(is.matrix(x) || is.matrix(resample_idx))
 
     n_resamples <- nrow(resample_idx)
-    res <- vector("list", n_resamples)
-    for (ii in seq_len(n_resamples)) {
-        idx <- resample_idx[ii, ]
-        xii <- x[, idx, drop = FALSE]
-        res[[ii]] <- apply_fun(xii)
+
+    if (is.function(combine_fun)) {
+        res <- vector("list", n_resamples)
+        for (ii in seq_len(n_resamples)) {
+            idx <- resample_idx[ii, ]
+            xii <- x[, idx, drop = FALSE]
+            res[[ii]] <- apply_fun(xii)
+        }
+        res <- combine_fun(res)
+    } else if (combine_fun == "iterative_add") {
+        if (is.null(outdim)) stop("outdim must be specified when iterative_add == TRUE")
+        res <- list(matrix(0, nrow = outdim[1], ncol = outdim[2]))  ## wrap in list so modify in place
+        #res <- matrix(0, nrow = outdim[1], ncol = outdim[2])
+        for (ii in seq_len(n_resamples)) {
+            idx <- resample_idx[ii, ]
+            xii <- x[, idx, drop = FALSE]
+            res[[1]] <- res[[1]] + apply_fun(xii)/n_resamples
+            #res <- res + apply_fun(xii)/n_resamples
+        }
+        res <- res[[1]]
     }
 
-    combine_fun(res)
+    res
 
 }
+

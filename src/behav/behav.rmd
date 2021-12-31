@@ -1,0 +1,352 @@
+---
+title: "behavioral analysis"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 3
+        toc_float: true
+        number_sections: true
+        df_print: paged
+        code_folding: hide
+---
+
+
+```{r setup, results = FALSE, message = FALSE, warning = FALSE}
+
+## libraries
+
+library(here)
+library(data.table)
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(lme4)
+
+source(here("src", "stroop-rsa-pc.R"))
+
+## settings
+
+opts_chunk$set(echo = TRUE)
+theme_set(theme_bw(base_size = 10))
+
+## data
+
+d <- 
+    fread(here("in", "behavior-and-events_stroop_2021-10-20_nice.csv")) %>% 
+    select(subj, session, wave, run, trial_num, item, color, word, trial_type, pc, acc, rt)
+
+session_orders <-
+    fread("C:/Users/mcf/Box/DMCC_Phase2(HCP)/groupAnalyses/DMCC2 Participants Proactive Session Order.csv") %>%
+    rename(subj = Subject_ID, proactive = Proactive_SessionOrderNo) %>%
+    filter(!is.na(proactive))
+d <- 
+    session_orders %>%
+    mutate(reactive = ifelse(proactive == 2, 3, 2)) %>%
+    pivot_longer(cols = c("proactive", "reactive"), names_to = "session", values_to = "session_order") %>%
+    right_join(d, by = c("subj", "session"))
+
+drt <- filter(d, !is.na(rt))
+
+## constants
+
+subjects_mcmi <- fread(here("out", paste0("subjlist_mcmi.txt")))[[1]]
+subjects_mimc <- fread(here("out", paste0("subjlist_mimc.txt")))[[1]]
+subjects_wave1 <- names(which(table(d$subj, d$wave)[, 1] == 672))
+counts <- session_orders %>% filter(subj %in% subjects_wave1) %>% pull(proactive) %>% table
+
+```
+
+
+# Intro
+
+Three subject sets
+
+- MCMI, N=`r length(subjects_mcmi)`: unrelated subjects with baseline (MC) wave 1, proactive (MI) wave 2
+- MIMC, N=`r length(subjects_mimc)`: unrelated subjects with proactive (MI) wave 1, baseline (MC) wave 2
+- wave1, N=`r length(subjects_wave1)`: unrelated and related subjects with baseline, proactive and reactive (ISPC) wave 1
+    - `r counts[1]` had proactive 2nd (reactive 3rd), `r counts[2]` had reverse
+
+```{r}
+
+drt %>%
+    ggplot(aes(rt)) +
+    geom_histogram(bins = 100) +
+    facet_grid(vars(session), vars(wave))
+
+
+drt %>%
+    filter(session %in% c("proactive", "reactive")) %>%
+    ggplot(aes(rt)) +
+    geom_histogram(bins = 100) +
+    facet_grid(vars(session_order), vars(wave))
+
+drt %>%
+    ggplot(aes(wave, rt, fill = session)) +
+    geom_boxplot(position = position_dodge(), width = 0.5) +
+    scale_fill_brewer(type = "qual", palette = 1)
+
+drt %>%
+    filter(session %in% c("proactive", "reactive")) %>%
+    ggplot(aes(wave, rt, fill = as.factor(session_order))) +
+    geom_boxplot(position = position_dodge(), width = 0.5) +
+    scale_fill_brewer(type = "qual", palette = 3)
+
+```
+
+
+
+```{r}
+drt <- filter(drt, rt > 0)
+```
+
+
+# Bias items
+
+## empirical bayes (LMER) models
+
+
+### baseline (MC) versus proactive (MI): MCMI
+
+```{r}
+
+drt %>%
+    filter(rt < 2000 & pc != "pc50" & wave == "wave1" & subj %in% subjects_mcmi & session %in% c("baseline", "proactive")) %>%
+    ggplot(aes(trial_type, rt, color = session)) +
+    stat_summary(fun.data = mean_cl_boot, position = position_dodge(width = 0.1), geom = "errorbar", size = 1.5, width = 0) +
+    stat_summary(fun = mean, position = position_dodge(width = 0.1), geom = "point", size = 3)
+
+ebm_mcmi <- 
+    lmer(
+    rt ~ trial_type * session + (trial_type * session | subj), 
+    drt,
+    subset = rt < 2000 & pc != "pc50" & wave == "wave1" & subj %in% subjects_mcmi & session %in% c("baseline", "proactive")
+    )
+
+summary(ebm_mcmi)
+plot(ebm_mcmi, col = model.frame(ebm_mcmi)$subj, pch = model.frame(ebm_mcmi)$trial_type)
+plot(coef(ebm_mcmi))
+coef(summary(ebm_mcmi)) %>%
+    as.data.table(keep.rownames = TRUE) %>%
+    ggplot(aes(rn, Estimate)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = Estimate - `Std. Error`*1.96, ymax = Estimate + `Std. Error`*1.96), width = 0) +
+    coord_flip()
+
+```
+
+
+### baseline (MC) versus proactive (MI): MIMC
+
+```{r}
+
+drt %>%
+    filter(rt < 2000 & pc != "pc50" & wave == "wave1" & subj %in% subjects_mimc, session %in% c("baseline", "proactive")) %>%
+    ggplot(aes(trial_type, rt, color = session)) +
+    stat_summary(fun.data = mean_cl_boot, position = position_dodge(width = 0.1), geom = "errorbar", size = 1.5, width = 0) +
+    stat_summary(fun = mean, position = position_dodge(width = 0.1), geom = "point", size = 3)
+
+ebm_mimc <- 
+    lmer(
+    rt ~ trial_type * pc + (trial_type * pc | subj), 
+    drt,
+    subset = rt < 2000 & pc != "pc50" & wave == "wave1" & subj %in% subjects_mcmi & session %in% c("baseline", "proactive")
+    )
+
+summary(ebm_mimc)
+plot(ebm_mimc, col = model.frame(ebm_mimc)$subj, pch = model.frame(ebm_mimc)$trial_type)
+plot(coef(ebm_mimc))
+coef(summary(ebm_mimc)) %>%
+    as.data.table(keep.rownames = TRUE) %>%
+    ggplot(aes(rn, Estimate)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = Estimate - `Std. Error`*1.96, ymax = Estimate + `Std. Error`*1.96), width = 0) +
+    coord_flip()
+
+```
+
+
+
+### proactive (MI) versus reactive (MC)
+
+
+```{r}
+
+drt %>%
+    filter(rt < 2000 & pc != "pc50" & wave == "wave1" & subj %in% subjects_wave1 & session %in% c("reactive", "proactive")) %>%
+    ggplot(aes(trial_type, rt, color = session)) +
+    stat_summary(fun.data = mean_cl_boot, position = position_dodge(width = 0.1), geom = "errorbar", size = 1.5, width = 0) +
+    stat_summary(fun = mean, position = position_dodge(width = 0.1), geom = "point", size = 3)
+
+ebm_wave1 <- 
+    lmer(
+    rt ~ trial_type * session + as.factor(session_order) + (trial_type * session | subj), 
+    drt,
+    subset = rt < 2000 & pc != "pc50" & wave == "wave1" & subj %in% subjects_wave1 & session %in% c("reactive", "proactive")
+    )
+
+summary(ebm_wave1)
+plot(ebm_wave1, col = model.frame(ebm_wave1)$subj, pch = model.frame(ebm_wave1)$trial_type)
+plot(coef(ebm_wave1))
+coef(summary(ebm_wave1)) %>%
+    as.data.table(keep.rownames = TRUE) %>%
+    ggplot(aes(rn, Estimate)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = Estimate - `Std. Error`*1.96, ymax = Estimate + `Std. Error`*1.96), width = 0) +
+    coord_flip()
+
+```
+
+
+
+
+
+
+
+# PC50 items
+
+## empirical bayes (LMER) models
+
+### baseline (MC) versus proactive (MI): MCMI
+
+```{r}
+
+drt %>%
+    filter(rt < 2000 & pc == "pc50" & wave == "wave1" & subj %in% subjects_mcmi & session %in% c("baseline", "proactive")) %>%
+    ggplot(aes(trial_type, rt, color = session)) +
+    stat_summary(fun.data = mean_cl_boot, position = position_dodge(width = 0.1), geom = "errorbar", size = 1.5, width = 0) +
+    stat_summary(fun = mean, position = position_dodge(width = 0.1), geom = "point", size = 3)
+
+ebm_mcmi_pc50 <-
+    lmer(
+    rt ~ trial_type * session + (trial_type * session | subj),
+    drt,
+    subset = rt < 2000 & pc == "pc50" & wave == "wave1" & subj %in% subjects_mcmi & session %in% c("baseline", "proactive")
+    )
+
+summary(ebm_mcmi_pc50)
+plot(ebm_mcmi_pc50, col = model.frame(ebm_mcmi_pc50)$subj, pch = model.frame(ebm_mcmi_pc50)$trial_type)
+plot(coef(ebm_mcmi_pc50))
+coef(summary(ebm_mcmi_pc50)) %>%
+    as.data.table(keep.rownames = TRUE) %>%
+    ggplot(aes(rn, Estimate)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = Estimate - `Std. Error`*1.96, ymax = Estimate + `Std. Error`*1.96), width = 0) +
+    coord_flip()
+
+```
+
+
+### baseline (MC) versus proactive (MI): MIMC
+
+```{r}
+
+drt %>%
+    filter(rt < 2000 & pc == "pc50" & wave == "wave1" & subj %in% subjects_mimc & session %in% c("baseline", "proactive")) %>%
+    ggplot(aes(trial_type, rt, color = session)) +
+    stat_summary(fun.data = mean_cl_boot, position = position_dodge(width = 0.1), geom = "errorbar", size = 1.5, width = 0) +
+    stat_summary(fun = mean, position = position_dodge(width = 0.1), geom = "point", size = 3)
+
+ebm_mimc_pc50 <-
+    lmer(
+    rt ~ trial_type * session + (trial_type * session | subj),
+    drt,
+    subset = rt < 2000 & pc == "pc50" & wave == "wave1" & subj %in% subjects_mimc & session %in% c("baseline", "proactive")
+    )
+
+summary(ebm_mimc_pc50)
+plot(ebm_mimc_pc50, col = model.frame(ebm_mimc_pc50)$subj, pch = model.frame(ebm_mimc_pc50)$trial_type)
+plot(coef(ebm_mimc_pc50))
+coef(summary(ebm_mimc_pc50)) %>%
+    as.data.table(keep.rownames = TRUE) %>%
+    ggplot(aes(rn, Estimate)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = Estimate - `Std. Error`*1.96, ymax = Estimate + `Std. Error`*1.96), width = 0) +
+    coord_flip()
+
+```
+
+
+
+### proactive (MI) versus reactive (MC)
+
+#### congruency*session
+
+```{r}
+
+drt %>%
+    filter(rt < 2000 & pc == "pc50" & wave == "wave1" & subj %in% subjects_wave1 & session %in% c("reactive", "proactive")) %>%
+    ggplot(aes(trial_type, rt, color = session)) +
+    stat_summary(fun.data = mean_cl_boot, position = position_dodge(width = 0.1), geom = "errorbar", size = 1.5, width = 0) +
+    stat_summary(fun = mean, position = position_dodge(width = 0.1), geom = "point", size = 3)
+
+ebm_wave1_pc50 <- 
+    lmer(
+    rt ~ trial_type * session + as.factor(session_order) + (trial_type | subj), 
+    drt,
+    subset = rt < 2000 & pc == "pc50" & wave == "wave1" & subj %in% subjects_wave1 & session %in% c("reactive", "proactive")
+    )
+
+summary(ebm_wave1_pc50)
+plot(ebm_wave1_pc50, col = model.frame(ebm_wave1_pc50)$subj, pch = model.frame(ebm_wave1_pc50)$trial_type)
+plot(coef(ebm_wave1_pc50))
+coef(summary(ebm_wave1_pc50)) %>%
+    as.data.table(keep.rownames = TRUE) %>%
+    ggplot(aes(rn, Estimate)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = Estimate - `Std. Error`*1.96, ymax = Estimate + `Std. Error`*1.96), width = 0) +
+    coord_flip()
+
+```
+
+
+#### congruency*session_order
+
+```{r}
+
+drt %>%
+    filter(rt < 2000 & pc == "pc50" & wave == "wave1" & subj %in% subjects_wave1 & session %in% c("reactive", "proactive")) %>%
+    ggplot(aes(trial_type, rt, color = as.factor(session_order))) +
+    stat_summary(fun.data = mean_cl_boot, position = position_dodge(width = 0.1), geom = "errorbar", size = 1.5, width = 0) +
+    stat_summary(fun = mean, position = position_dodge(width = 0.1), geom = "point", size = 3)
+
+ebm_wave1_pc50 <- 
+    lmer(
+    rt ~ trial_type * as.factor(session_order) + session + (trial_type * as.factor(session_order) | subj), 
+    drt,
+    subset = rt < 2000 & pc == "pc50" & wave == "wave1" & subj %in% subjects_wave1 & session %in% c("reactive", "proactive")
+    )
+
+summary(ebm_wave1_pc50)
+plot(ebm_wave1_pc50, col = model.frame(ebm_wave1_pc50)$subj, pch = model.frame(ebm_wave1_pc50)$trial_type)
+plot(coef(ebm_wave1_pc50))
+coef(summary(ebm_wave1_pc50)) %>%
+    as.data.table(keep.rownames = TRUE) %>%
+    ggplot(aes(rn, Estimate)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = Estimate - `Std. Error`*1.96, ymax = Estimate + `Std. Error`*1.96), width = 0) +
+    coord_flip()
+
+```
+
+#### congruency\*session_order\*session
+
+```{r}
+
+ebm_wave1_pc50 <- 
+    lmer(
+    rt ~ trial_type * as.factor(session_order) * session + (trial_type * as.factor(session_order) | subj) + 
+        (trial_type * as.factor(session_order) | color), 
+    drt,
+    subset = rt < 2000 & pc == "pc50" & wave == "wave1" & subj %in% subjects_wave1 & session %in% c("reactive", "proactive")
+    )
+
+summary(ebm_wave1_pc50)
+coef(summary(ebm_wave1_pc50)) %>%
+    as.data.table(keep.rownames = TRUE) %>%
+    ggplot(aes(rn, Estimate)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = Estimate - `Std. Error`*1.96, ymax = Estimate + `Std. Error`*1.96), width = 0) +
+    coord_flip()
+
+```

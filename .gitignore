@@ -9,3 +9,6 @@ out/res
 out/sim
 
 src/scratch
+misc/profile.html
+
+docs/*
