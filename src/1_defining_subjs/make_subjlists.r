@@ -1,5 +1,7 @@
 library(here)
 library(data.table)
+library(dplyr)
+
 source(here("src", "stroop-rsa-pc.R"))
 
 s <- fread(here("out", "subjlist.csv"))
@@ -35,3 +37,43 @@ fwrite(s[session == "baseline" & wave == "wave1", "subj"], here("out", "subjlist
 fwrite(s[session == "baseline" & wave == "wave2", "subj"], here("out", "subjlist_mc2.txt"), col.names = FALSE)
 fwrite(s[session == "proactive" & wave == "wave1", "subj"], here("out", "subjlist_mi1.txt"), col.names = FALSE)
 fwrite(s[session == "proactive" & wave == "wave2", "subj"], here("out", "subjlist_mi2.txt"), col.names = FALSE)
+
+
+## jneurosci (re)analysis list: wave1 proactive
+
+strooprsa <- fread("https://raw.githubusercontent.com/mcfreund/stroop-rsa/master/in/behavior-and-events_group201902.csv")
+strooprsa <- unique(strooprsa[, .(subj, is.analysis.group)])
+strooprsa[, .N, by = is.analysis.group]
+reanalysis_primary <- strooprsa[is.analysis.group == TRUE, "subj"]
+reanalysis_cotwin <- strooprsa[is.analysis.group == TRUE, "subj"]
+
+fwrite(reanalysis_primary, here("out", "subjlist_jneurosci_primary.txt"), col.names = FALSE)
+fwrite(reanalysis_cotwin, here("out", "subjlist_jneurosci_cotwin.txt"), col.names = FALSE)
+
+reanalysis <- c(reanalysis_primary$subj, reanalysis_cotwin$subj)
+
+## jneurosci replication list: wave1 proactive NOT IN reanalysis
+
+replication <- s[session == "proactive" & wave == "wave1" & !subj %in% reanalysis]
+sample_cotwins <- function(x) {
+  set.seed(0)
+  twinpairs <- unique(x$twinpair[duplicated(x$twinpair)])
+  x <- x %>% filter(twinpair %in% twinpairs)  ## only twins in sample
+  x %>%
+    group_by(twinpair) %>%
+    sample_n(1) %>%
+    pull(subj)
+}
+replication_cotwins <- sample_cotwins(replication)
+replication_primary <- replication[!subj %in% replication_cotwins, subj]
+length(replication_cotwins)
+length(replication_primary)
+# intersect(c(replication_primary, replication_cotwins), c(reanalysis_primary, reanalysis_cotwin))
+# intersect(replication_primary, replication_cotwins)
+# table(replication[subj %in% replication_primary, twinpair])
+# table(replication[subj %in% replication_cotwins, twinpair])
+
+fwrite(as.data.frame(replication_primary), here("out", "subjlist_jneurosci_replication_primary.txt"), col.names = FALSE)
+fwrite(as.data.frame(replication_cotwins), here("out", "subjlist_jneurosci_replication_cotwin.txt"), col.names = FALSE)
+
+
