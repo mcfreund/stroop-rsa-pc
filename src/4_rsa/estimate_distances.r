@@ -98,30 +98,45 @@ if (atlas_name == "glasser2016" && grepl("fsaverage", space)) {
 cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
 res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %dopar% {
-    
     input_val <- l[[ii]]
     ses <- unique(input_val$session)
-
+    
+    ## read betas and subset trialtypes, vertices
+    
     B <- enlist(runs)
+    is_bad_vert <- enlist(runs)
     for (run_i in seq_along(runs)) {
         Bi <- read_dset(input_val[run == runs[run_i], file_name], input_val[run == runs[run_i], dset_name])
         ttypes_to_get <- intersect(ttypes_by_run[[ses]][[run_i]], ttypes[[ttype_subset]])
-        B[[run_i]] <- Bi[, colnames(Bi) %in% ttypes_to_get]  ## discard low-trialcount trialtypes
+        Bi <- Bi[, colnames(Bi) %in% ttypes_to_get]  ## discard low-trialcount trialtypes
+        B[[run_i]] <- Bi
+        is_bad_vert[[run_i]] <- is_equal(Var(Bi, 1), 0)  ## verts with no BOLD
     }
+    ## subset vertices:
+    is_good_vert <- !Reduce("|", is_bad_vert)
+    if (sum(is_good_vert) == 0) {
+        stop(c("no good verts: ", paste0(input_val[1, 1:5], sep = " ")))
+    } else {
+        B[[run_i]] <- Bi[is_good_vert, ]  ## discard vertices with no BOLD
+    }
+    
+    ## estimate distances/similarities
 
     if (measure == "cveuc") {  ## cross-validated euclidean
-        cvdist(
+        res <- cvdist(
             average(B$run1, g = colnames(B$run1)),
             average(B$run2, g = colnames(B$run2)),
             scale = TRUE
         )
     } else if (measure == "crcor") {    ## cross-run correlation (with downsampling)
-        crcor(
+        res <- crcor(
             B$run1, B$run2, 
             n_resamples = n_resamples, 
             expected_min = expected_min[[paste0(ses, "_", ttype_subset)]]
             )
     }
+
+    res
 
 }
 stopCluster(cl)
