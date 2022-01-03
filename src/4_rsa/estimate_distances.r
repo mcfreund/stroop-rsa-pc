@@ -90,8 +90,10 @@ if (!overwrite) {
     }
 }
 
-
-
+## remove hippocampi from glasser atlas (not represented in fsaverages???)
+if (atlas_name == "glasser2016" && grepl("fsaverage", space)) {
+    l <- l[!grepl("__L_H$|__R_H$", names(l))]
+}
 
 cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
