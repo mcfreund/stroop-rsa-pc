@@ -1,8 +1,3 @@
-## TODO
-## construct_filename
-## takes data_type:
-## gifti, parcellated coefs, rdm, weights...
-
 ## settings ----
 
 options(datatable.print.trunc.cols = TRUE, datatable.print.class = TRUE, datatable.print.nrows = 50)
@@ -247,33 +242,6 @@ read_atlas <- function(
 }
 
 ## reading RSA models
-
-
-# read_model_rdm <- function(cells = "all", session = NULL) {
-
-#     target <- as.matrix(fread(here("in", "model_target.csv")))
-#     distractor <- as.matrix(fread(here("in", "model_distractor.csv")))
-#     incongruency <- as.matrix(fread(here("in", "model_incongruency.csv")))
-#     rownames(target) <- colnames(target)
-#     rownames(distractor) <- colnames(distractor)
-#     rownames(incongruency) <- colnames(incongruency)
-
-#     if (!is.null(session)) {
-#         target <- target[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
-#         distractor <- distractor[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
-#         incongruency <- incongruency[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
-#     }
-
-#     if (cells == "all") {
-#         list(target = target, distractor = distractor, incongruency = incongruency)
-#     } else if (cells == "offdiag") {
-#         cbind(target = offdiag(target), distractor = offdiag(distractor), incongruency = offdiag(incongruency))
-#     } else if (cells == "lowertri") {
-#         cbind(target = vec(target), distractor = vec(distractor), incongruency = vec(incongruency))
-#     }
-
-# }
-
 
 read_model_rdm <- function(
     model, measure_type, session, ttype_subset, 
