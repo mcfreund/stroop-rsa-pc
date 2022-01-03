@@ -32,6 +32,7 @@ library(abind)
 library(rhdf5)
 library(foreach)
 suppressMessages(library(doParallel))
+library(mfutils)
 source(here("src", "stroop-rsa-pc.R"))
 
 ## set variables
@@ -40,14 +41,16 @@ task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
-    #roiset <- "Schaefer2018Parcel200"
-    roiset <- "Schaefer2018Parcel"
-    subjlist <- "mc1"
+    atlas_name <- "glasser2016"
+    roi_col <- "parcel"
+    space <- "fsaverage5"
+    subjlist <- "mi1"
     subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]][1:5]
-    sessions <- c("baseline")
+    sessions <- c("proactive")
     waves <- c("wave1")
     glm_i <- 1
     n_cores <- 10
+    overwrite <- TRUE
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -64,9 +67,9 @@ if (glmname == "lssep_1rpm") {
 }
 tinfo <- read_trialinfo()[subj %in% subjects & wave %in% waves & session %in% sessions]
 setkey(tinfo, subj, wave, session, run)  ## for quick subsetting within loop below
-atlas <- read_atlas(roiset)
-rois <- names(atlas$roi)
-
+atlas <- load_atlas(atlas_name, space)
+roiset <- paste0(atlas_name, "_", roi_col)
+rois <- unique(atlas$key[[roi_col]])
 
 ## execute ----
 
@@ -98,7 +101,7 @@ res <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
         concat_hemis(input_val$hemi, pattern = pattern) %>% ## extract data and concatenate
         rename_dim(tlabels) %>% ## add trialtypes to colnames
         .[, Var(., 2) != 0L] %>%  ## filter regressors that are all zero
-        parcellate_data(atlas) ## split matrix into list of length n_roi
+        parcellate(atlas, roi_col) ## split matrix into list of length n_roi
     
     out_names <- construct_filename_h5(subject = sub, wave = wav, session = ses, run = run, roiset = roiset, roi = rois)
     if (!overwrite) {

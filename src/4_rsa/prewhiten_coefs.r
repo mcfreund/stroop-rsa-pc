@@ -28,8 +28,9 @@ library(foreach)
 suppressMessages(library(doParallel))
 suppressMessages(library(CovTools))
 library(pracma)
+library(mfutils)
 source(here("src", "stroop-rsa-pc.R"))
-library(profvis)
+#library(profvis)
 
 ## set variables
 
@@ -37,9 +38,11 @@ task <- "Stroop"
 
 if (interactive()) { 
     glmname <- "lsall_1rpm"
-    roiset <- "Schaefer2018Network"
+    atlas_name <- "schaefer2018_17_200"
+    roi_col <- "parcel"
+    space <- "fsaverage5"
     prewh <- "obspc50"  ## obsresamp, obsall, obsresampbias, obsresamppc50, obsbias, obspc50
-    subjlist <- "mcmi"
+    subjlist <- "mi1"
     subjects <- fread(here(paste0("out/subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
     sessions <- "proactive"
@@ -54,8 +57,10 @@ if (interactive()) {
 
 stopifnot(prewh %in% expected$prewh)
 
-atlas <- read_atlas(roiset)
-rois <- names(atlas$roi)
+atlas <- load_atlas(atlas_name, space)
+rois <- unique(atlas$key[[roi_col]])
+roiset <- paste0(atlas_name, "_", roi_col)
+
 
 if (prewh %in% c("obsresamp", "obsall")) {
     ttype_subset <- "all"
@@ -98,7 +103,7 @@ res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
     B <- read_dset(input_val$file_name, input_val$dset_name)
     
     ## remove trial-wise variance due to conditions from each voxel
-    X <- indicator_matrix(colnames(B))  ## colnames of B gives the condition
+    X <- indicator(colnames(B))  ## colnames of B gives the condition
     resids <- resid(.lm.fit(X, t(B)))
     
     ## estimate covariance matrix of residuals and invert

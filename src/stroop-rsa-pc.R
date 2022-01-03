@@ -1,8 +1,3 @@
-## TODO
-## construct_filename
-## takes data_type:
-## gifti, parcellated coefs, rdm, weights...
-
 ## settings ----
 
 options(datatable.print.trunc.cols = TRUE, datatable.print.class = TRUE, datatable.print.nrows = 50)
@@ -116,9 +111,7 @@ core32 <- c(
 
 ## misc
 
-get_network <- function(x) gsub("^.H_(Vis|SomMot|Cont|Default|Limbic|SalVentAttn|DorsAttn)_.*", "\\1", x)
-combo_paste <- function(a, b, sep = "", ...) apply(expand.grid(a, b, ...), 1, paste0, collapse = sep)
-enlist <- function(nms) setNames(vector("list", length(nms)), nms)
+#get_network <- function(x) gsub("^.H_(Vis|SomMot|Cont|Default|Limbic|SalVentAttn|DorsAttn)_.*", "\\1", x)
 # invert_list <- function(l) { 
 #   ## https://stackoverflow.com/questions/15263146/revert-list-structure
 #   ## @Josh O'Brien
@@ -126,66 +119,9 @@ enlist <- function(nms) setNames(vector("list", length(nms)), nms)
 #   apply(do.call(rbind, x), 2, as.list)  ## stack and reslice
 # }
 
-## wrangling RDMs
-
-
-melt_mat <- function(x, col = 1, ...) {
-  ## a wrapper for reshape2::melt(), which converts matrices to long-form data.frames.
-  ## useful for subsequently plotting matrices with ggplot2().
-  stopifnot(is.array(x))  ## check that it's a matrix or something similar
-  #stopifnot(length(dim(x)) == 2)  ## check that it's a matrix or something similar
-  m <- reshape2::melt(x, ...)  ## from reshape2 package. nice b/c converts dimnames of matrix into columns.
-  m[[col]] <- factor(m[[col]], levels = rev(unique(m[[col]])))  ## reverse one factor's levels so diag is topL->bottomR
-  m
-}
-
-plot_melted_mat <- function(x, .row = "Var1", .col = "Var2", .value = "value",
-    rotate_xaxis_text = TRUE, add_greyscale_gradient = TRUE, geom = "raster") {
-  ## a convenience function that plots numeric matrices with sensible defaults. 
-  ## that takes a dataframe x, possibly the output of melt_mat(), as input, along with
-  ## three strings .row, .col, .value, that indicate the names of the associated columns in the data.frame.
-  ## the default arguments are set to work with the labels that reshape2::melt() uses when names(dimnames(x)) 
-  ## are not set.
-  stopifnot(is.data.frame(x) && is.character(.row) && is.character(.col) && is.character(.value))
-  p <- x %>% 
-    ggplot2::ggplot(aes_string(.col, .row, fill = .value)) +
-    ggplot2::scale_x_discrete(position = "top")
-  if (geom == "raster") {
-      p <- p + ggplot2::geom_raster()
-  } else if (geom == "tile") {
-      p <- p + ggplot2::geom_tile(color = "grey50")
-  }
-  if (rotate_xaxis_text) p <- p + ggplot2::theme(axis.text.x = element_text(angle = 90, hjust = 0))
-  if (add_greyscale_gradient) p <- p + ggplot2::scale_fill_gradient(low = "black", high = "white")
-  p
-}
 
 
 ## math/stats functions
-
-center <- function(x) {
-    stopifnot(length(dim(x)) == 2)
-    x - rep(colMeans(x), rep.int(nrow(x), ncol(x)))
-}
-
-scale2unit <- function(x) {
-    stopifnot(is.matrix(x) || is.vector(x))
-    if (is.vector(x)) {
-        x / sqrt(sum(x^2))
-    } else if (is.matrix(x)) {
-        x %*% diag(1 / sqrt(colSums(x^2)))
-    }
-}
-
-average <- function(mat, g) {
-    if (!is.matrix(mat) & is.character(g)) stop("mat must be matrix, g must be character")
-    A <- model.matrix(~ g + 0)
-    new_colnames <- gsub("^g", "", colnames(A))
-    A <- A %*% diag(1/colSums(A))
-    mat_bar <- mat %*% A
-    colnames(mat_bar) <- new_colnames
-    mat_bar
-}
 
 .cvdist <- function(x1, x2, m) {
     D <- rowMeans(tcrossprod(m, x1) * tcrossprod(m, x2))  ## means to scale by num verts
@@ -236,56 +172,6 @@ crcor <- function(x1, x2, n_resamples, expected_min){
 
 }
 
-
-vec <- function(x) {
-    stopifnot(length(dim(x)) == 2)
-    x[lower.tri(x)]
-}
-offdiag <- function(x) {
-    stopifnot(length(dim(x)) == 2)
-    x[row(x) != col(x)]
-}
-
-
-indicator_matrix <- function(x) {
-    stopifnot(is.character(x))
-    X <- stats::model.matrix(~ as.factor(x) + 0)
-    colnames(X) <- gsub("^as\\.factor\\(x\\)", "", colnames(X))
-    attr(X, "assign") <- NULL
-    attr(X, "contrasts") <- NULL
-    X
-}
-
-Var <- function(x, dim = 1, ...) {
-  ##https://stackoverflow.com/questions/25099825/row-wise-variance-of-a-matrix-in-r
-  if(dim == 1){
-     rowSums((x - rowMeans(x, ...))^2, ...)/(dim(x)[2] - 1)
-  } else if (dim == 2) {
-     rowSums((t(x) - colMeans(x, ...))^2, ...)/(dim(x)[1] - 1)
-  } else stop("Please enter valid dimension")
-}
-
-## writing rmarkdown reports
-
-render_report <- function(
-    name, src_dir, params = NULL, ..., envir = new.env(), base_dir = here::here("src")
-    ) {
-  ## https://bookdown.org/yihui/rmarkdown/params-knit.html
-  
-  if (is.null(params)) {
-      output_file <- paste0(name, ".html")
-  } else {
-      output_file <- paste0(name, "__", paste0(paste0(names(params), "-", params), collapse = "__"), ".html")
-  }
-
-  rmarkdown::render(
-    file.path(base_dir, src_dir, paste0(name, ".rmd")), 
-    params = params,
-    output_file = output_file,
-    envir = envir,
-    ...
-  )
-}
 
 ## reading behavioral data / trial-level information
 
@@ -357,33 +243,6 @@ read_atlas <- function(
 
 ## reading RSA models
 
-
-# read_model_rdm <- function(cells = "all", session = NULL) {
-
-#     target <- as.matrix(fread(here("in", "model_target.csv")))
-#     distractor <- as.matrix(fread(here("in", "model_distractor.csv")))
-#     incongruency <- as.matrix(fread(here("in", "model_incongruency.csv")))
-#     rownames(target) <- colnames(target)
-#     rownames(distractor) <- colnames(distractor)
-#     rownames(incongruency) <- colnames(incongruency)
-
-#     if (!is.null(session)) {
-#         target <- target[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
-#         distractor <- distractor[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
-#         incongruency <- incongruency[ttypes_by_run[[session]]$run1, ttypes_by_run[[session]]$run2]
-#     }
-
-#     if (cells == "all") {
-#         list(target = target, distractor = distractor, incongruency = incongruency)
-#     } else if (cells == "offdiag") {
-#         cbind(target = offdiag(target), distractor = offdiag(distractor), incongruency = offdiag(incongruency))
-#     } else if (cells == "lowertri") {
-#         cbind(target = vec(target), distractor = vec(distractor), incongruency = vec(incongruency))
-#     }
-
-# }
-
-
 read_model_rdm <- function(
     model, measure_type, session, ttype_subset, 
     base_dir = here::here("out", "rsa_models")
@@ -412,7 +271,7 @@ read_model_xmat <- function(
             ttype_subset = ttype_subset
             )
     }
-    cbind(intercept = 1, do.call(cbind, lapply(mods, switch(measure, crcor = c, cveuc = vec))))
+    cbind(intercept = 1, do.call(cbind, lapply(mods, switch(measure, crcor = c, cveuc = mfutils::squareform))))
 }
 
 ## tidying regression output
@@ -423,46 +282,6 @@ tidy_model <- function(B, terms, outcomes) {
     B$term <- terms
     B
  }
-
-
-## for interacting with gifti objects
-
-extract_labels <- function(gifti) {
-    stopifnot(class(gifti) == "gifti")
-    vapply(gifti$data_meta, function(x) x[1, "vals"], character(1))
-}
-
-extract_data <- function(gifti, pattern = NULL) {
-    stopifnot(class(gifti) == "gifti")
-    data <- abind::abind(gifti$data)  ## extract
-    colnames(data) <- extract_labels(gifti)
-    if (!is.null(pattern)) data <- data[, grep(pattern, colnames(data))]
-    data
-}
-
-concat_hemis <- function(l, hemis = c("L", "R"), pattern = NULL) {
-    if (class(l) != "list" || !identical(vapply(l, class, ""), c("gifti", "gifti"))) stop("l must be list of 2 giftis")
-    stopifnot(sort(hemis) == c("L", "R"))
-    abind::abind(lapply(l[order(hemis)], extract_data, pattern = pattern), along = 1)
-}
-
-parcellate_data <- function(x, atlas) {
-    if (!identical(class(x), "matrix")) stop("x must be of class matrix")
-    if (nrow(x) != length(atlas$data)) stop("nrow(x) does not match nrow(atlas$data)")
-    out <- enlist(names(atlas$rois))
-    for (roi_i in seq_along(atlas$rois)) {
-        which_parcels <- which(atlas$key %in% atlas$rois[[roi_i]])
-        is_roi <- atlas$data %in% which_parcels
-        out[[roi_i]] <- x[is_roi, ]
-    }
-    out
-}
-
-rename_dim <- function(m, new_names, DIM = 2) {
-    if (!is.array(m)) stop("x must be matrix or array")
-    dimnames(m)[[DIM]] <- new_names
-    m
-}
 
 
 ## filename constructors
@@ -709,8 +528,6 @@ read_rdms <- function(
 
 ## resampling functions
 
-
-resample <- function(x, ...) x[sample.int(length(x), ...)]  ## NB: see ?sample()
 
 get_resampled_idx <- function(conditions, n_resamples, expected_min, seed = 0) {
     stopifnot(is.character(conditions) || is.numeric(n_resamples) || is.numeric(expected_min))

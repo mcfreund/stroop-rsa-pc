@@ -27,6 +27,7 @@ library(abind)
 library(rhdf5)
 library(foreach)
 suppressMessages(library(doParallel))
+library(mfutils)
 source(here("src", "stroop-rsa-pc.R"))
 
 
@@ -36,13 +37,15 @@ task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
-    roiset <- "Schaefer2018Network"
     prewh <- "none"
-    measure <- "crcor"
-    subjlist <- "mcmi"
-    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]][1:5]
+    atlas_name <- "glasser2016"
+    roi_col <- "parcel"
+    space <- "fsaverage5"
+    measure <- "cveuc"
+    subjlist <- "mi1"
+    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
-    sessions <- c("proactive", "baseline")
+    sessions <- "proactive"
     ttype_subset <- "bias"
     subject = subjects[1]
     wave = waves[1]
@@ -57,8 +60,13 @@ stopifnot(sessions %in% c("baseline", "proactive", "reactive"))
 stopifnot(measure %in% c("crcor", "cveuc"))
 if (!exists("suffix")) suffix <- ""
 
-atlas <- read_atlas(roiset)
-rois <- names(atlas$roi)
+atlas <- load_atlas(atlas_name, space)
+rois <- unique(atlas$key[[roi_col]])
+## remove hippocampi from glasser atlas (not represented in fsaverages???)
+if (atlas_name == "glasser2016" && grepl("fsaverage", space)) {
+    rois <- rois[rois != "L_H" & rois != "R_H"]
+}
+roiset <- paste0(atlas_name, "_", roi_col)
 X <- enlist(sessions)
 for (session in sessions) X[[session]] <- read_model_xmat(measure, session, ttype_subset)
 
@@ -77,7 +85,7 @@ for (session in sessions) {
                 .ttype_subset = ttype_subset,
                 .ttypes1 = intersect(ttypes_by_run[[session]]$run1, ttypes[[ttype_subset]]),
                 .ttypes2 = intersect(ttypes_by_run[[session]]$run2, ttypes[[ttype_subset]]),
-                .rois = names(atlas$rois)
+                .rois = rois
             )
     }
 }
@@ -96,10 +104,10 @@ for (subject_i in seq_along(subjects)) {
 
         ## preproc:
         if (measure == "cveuc") {
-            d <- apply(Di, 3, vec)  ## vectorize
+            d <- apply(Di, 3, squareform)  ## vectorize
             Y <- d %*% diag(1/sqrt(Var(d, 2)))  ## scale
         } else if (measure == "crcor") {
-            d <- apply(Di, 3, c)  ## vectorize
+            d <- apply(Di, 3, squareform, lt = FALSE)  ## vectorize
             Y <- atanh(d)  ## Fisher's z transform
         }
         

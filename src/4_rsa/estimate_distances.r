@@ -25,6 +25,7 @@ library(abind)
 library(rhdf5)
 library(foreach)
 suppressMessages(library(doParallel))
+library(mfutils)
 source(here("src", "stroop-rsa-pc.R"))
 
 ## set variables
@@ -33,18 +34,21 @@ task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
-    roiset <- "Schaefer2018Network"
-    prewh <- "none"
-    measure <- "crcor"  ## crcor
-    subjects <- fread(here("out/subjlist_mimc.txt"))[[1]]
+    atlas_name <- "glasser2016"
+    space <- "fsaverage5"
+    roi_col <- "parcel"
+    subjlist <- "mi1"
+    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
     sessions <- "proactive"
-    ttype_subset <- "pc50"
-    ii <- 1
+    measure <- "cveuc"  ## crcor
+    prewh <- "none"
+    ttype_subset <- "bias"
+    ii <- 596
     n_cores <- 1
     run_i <- 1
     n_resamples <- 1
-    overwrite <- FALSE
+    overwrite <- TRUE
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -53,9 +57,13 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
 stopifnot(sessions %in% c("baseline", "proactive", "reactive"))
 stopifnot(measure %in% c("crcor", "cveuc"))
 
-atlas <- read_atlas(roiset)
-rois <- names(atlas$roi)
-
+atlas <- load_atlas(atlas_name, space)
+rois <- unique(atlas$key[[roi_col]])
+## remove hippocampi from glasser atlas (not represented in fsaverages???)
+if (atlas_name == "glasser2016" && grepl("fsaverage", space)) {
+    rois <- rois[rois != "L_H" & rois != "R_H"]
+}
+roiset <- paste0(atlas_name, "_", roi_col)
 
 
 ## execute ----
@@ -86,36 +94,53 @@ if (!overwrite) {
     }
 }
 
-
-
-
 cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
 res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %dopar% {
-    
+#resall <- enlist(names(l))
+#for (ii in seq_along(l)) {
+#for (ii in seq(ii, length(l))) {
+
     input_val <- l[[ii]]
     ses <- unique(input_val$session)
-
+    
+    ## read betas and subset trialtypes, vertices
+    
     B <- enlist(runs)
+    is_bad_vert <- enlist(runs)
     for (run_i in seq_along(runs)) {
         Bi <- read_dset(input_val[run == runs[run_i], file_name], input_val[run == runs[run_i], dset_name])
         ttypes_to_get <- intersect(ttypes_by_run[[ses]][[run_i]], ttypes[[ttype_subset]])
-        B[[run_i]] <- Bi[, colnames(Bi) %in% ttypes_to_get]  ## discard low-trialcount trialtypes
+        Bi <- Bi[, colnames(Bi) %in% ttypes_to_get]  ## discard low-trialcount trialtypes
+        B[[run_i]] <- Bi
+        is_bad_vert[[run_i]] <- is_equal(Var(Bi, 1), 0)  ## verts with no BOLD
     }
+    ## subset vertices:
+    is_good_vert <- !Reduce("|", is_bad_vert)
+    if (sum(is_good_vert) == 0) {
+        stop(c("no good verts: ", paste0(input_val[1, 1:5], sep = " ")))
+    } else {
+        B <- lapply(B, function(x) x[is_good_vert, ])  ## discard vertices with no BOLD
+    }
+    
+    ## estimate distances/similarities
 
     if (measure == "cveuc") {  ## cross-validated euclidean
-        cvdist(
+        res <- cvdist(
             average(B$run1, g = colnames(B$run1)),
             average(B$run2, g = colnames(B$run2)),
             scale = TRUE
         )
     } else if (measure == "crcor") {    ## cross-run correlation (with downsampling)
-        crcor(
+        res <- crcor(
             B$run1, B$run2, 
             n_resamples = n_resamples, 
             expected_min = expected_min[[paste0(ses, "_", ttype_subset)]]
             )
     }
+
+    #resall[[ii]] <- res
+    res
 
 }
 stopCluster(cl)
