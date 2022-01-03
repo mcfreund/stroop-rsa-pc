@@ -59,6 +59,10 @@ stopifnot(measure %in% c("crcor", "cveuc"))
 
 atlas <- load_atlas(atlas_name, space)
 rois <- unique(atlas$key[[roi_col]])
+## remove hippocampi from glasser atlas (not represented in fsaverages???)
+if (atlas_name == "glasser2016" && grepl("fsaverage", space)) {
+    rois <- rois[rois != "L_H" & rois != "R_H"]
+}
 roiset <- paste0(atlas_name, "_", roi_col)
 
 
@@ -90,14 +94,13 @@ if (!overwrite) {
     }
 }
 
-## remove hippocampi from glasser atlas (not represented in fsaverages???)
-if (atlas_name == "glasser2016" && grepl("fsaverage", space)) {
-    l <- l[!grepl("__L_H$|__R_H$", names(l))]
-}
-
 cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
 res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %dopar% {
+#resall <- enlist(names(l))
+#for (ii in seq_along(l)) {
+#for (ii in seq(ii, length(l))) {
+
     input_val <- l[[ii]]
     ses <- unique(input_val$session)
     
@@ -117,7 +120,7 @@ res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %d
     if (sum(is_good_vert) == 0) {
         stop(c("no good verts: ", paste0(input_val[1, 1:5], sep = " ")))
     } else {
-        B[[run_i]] <- Bi[is_good_vert, ]  ## discard vertices with no BOLD
+        B <- lapply(B, function(x) x[is_good_vert, ])  ## discard vertices with no BOLD
     }
     
     ## estimate distances/similarities
@@ -136,6 +139,7 @@ res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %d
             )
     }
 
+    #resall[[ii]] <- res
     res
 
 }

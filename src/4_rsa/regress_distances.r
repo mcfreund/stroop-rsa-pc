@@ -62,6 +62,10 @@ if (!exists("suffix")) suffix <- ""
 
 atlas <- load_atlas(atlas_name, space)
 rois <- unique(atlas$key[[roi_col]])
+## remove hippocampi from glasser atlas (not represented in fsaverages???)
+if (atlas_name == "glasser2016" && grepl("fsaverage", space)) {
+    rois <- rois[rois != "L_H" & rois != "R_H"]
+}
 roiset <- paste0(atlas_name, "_", roi_col)
 X <- enlist(sessions)
 for (session in sessions) X[[session]] <- read_model_xmat(measure, session, ttype_subset)
