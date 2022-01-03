@@ -25,6 +25,7 @@ library(abind)
 library(rhdf5)
 library(foreach)
 suppressMessages(library(doParallel))
+library(mfutils)
 source(here("src", "stroop-rsa-pc.R"))
 
 ## set variables
@@ -33,18 +34,21 @@ task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
-    roiset <- "Schaefer2018Network"
-    prewh <- "none"
-    measure <- "crcor"  ## crcor
-    subjects <- fread(here("out/subjlist_mimc.txt"))[[1]]
+    atlas_name <- "glasser2016"
+    space <- "fsaverage5"
+    roi_col <- "parcel"
+    subjlist <- "mi1"
+    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
     sessions <- "proactive"
-    ttype_subset <- "pc50"
-    ii <- 1
+    measure <- "cveuc"  ## crcor
+    prewh <- "none"
+    ttype_subset <- "bias"
+    ii <- 596
     n_cores <- 1
     run_i <- 1
     n_resamples <- 1
-    overwrite <- FALSE
+    overwrite <- TRUE
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -53,9 +57,9 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
 stopifnot(sessions %in% c("baseline", "proactive", "reactive"))
 stopifnot(measure %in% c("crcor", "cveuc"))
 
-atlas <- read_atlas(roiset)
-rois <- names(atlas$roi)
-
+atlas <- load_atlas(atlas_name, space)
+rois <- unique(atlas$key[[roi_col]])
+roiset <- paste0(atlas_name, "_", roi_col)
 
 
 ## execute ----
