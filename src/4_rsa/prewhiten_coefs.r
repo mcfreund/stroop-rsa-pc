@@ -38,10 +38,10 @@ task <- "Stroop"
 
 if (interactive()) { 
     glmname <- "lsall_1rpm"
-    atlas_name <- "schaefer2018_17_200"
+    atlas_name <- "glasser2016_parcel"
     roi_col <- "parcel"
     space <- "fsaverage5"
-    prewh <- "obspc50"  ## obsresamp, obsall, obsresampbias, obsresamppc50, obsbias, obspc50
+    prewh <- "obsall"  ## obsresamp, obsall, obsresampbias, obsresamppc50, obsbias, obspc50
     subjlist <- "mi1"
     subjects <- fread(here(paste0("out/subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
@@ -59,6 +59,10 @@ stopifnot(prewh %in% expected$prewh)
 
 atlas <- load_atlas(atlas_name, space)
 rois <- unique(atlas$key[[roi_col]])
+## remove hippocampi from glasser atlas (not represented in fsaverages???)
+if (atlas_name == "glasser2016" && grepl("fsaverage", space)) {
+    rois <- rois[rois != "L_H" & rois != "R_H"]
+}
 roiset <- paste0(atlas_name, "_", roi_col)
 
 
