@@ -85,3 +85,75 @@ do
     
 done
 echo $(date)
+
+
+
+## prewhiten
+
+n_cores=12
+prewh="obsall"
+echo $(date)
+for atlas_name in ${atlas_names[@]}
+do
+
+    echo $atlas_name
+
+    Rscript ./src/4_rsa/prewhiten_coefs.r \
+        --glmname $glmname \
+        --atlas_name $atlas_name \
+        --space $space \
+        --roi_col $roi_col \
+        --subjlist $subjlist \
+        --waves $wave \
+        --sessions $session \
+        --prewh $prewh \
+        --n_cores $n_cores \
+        --overwrite $overwrite
+
+done
+echo $(date)
+
+
+
+for measure in ${measures[@]}
+do
+    echo $measure
+    for atlas_name in ${atlas_names[@]}
+    do
+        echo $atlas_name
+        for ttype_subset in ${ttype_subsets[@]}
+        do
+            echo $ttype_subset
+            echo estimate
+            echo $(date)
+            Rscript ./src/4_rsa/estimate_distances.r \
+                --glmname $glmname \
+                --atlas_name $atlas_name \
+                --space $space \
+                --roi_col $roi_col \
+                --subjlist $subjlist \
+                --waves $wave \
+                --sessions $session \
+                --measure $measure \
+                --prewh $prewh \
+                --ttype_subset $ttype_subset \
+                --n_cores $n_cores \
+                --n_resamples $n_resamples \
+                --overwrite $overwrite
+            echo $(date)
+            echo regress
+            Rscript ./src/4_rsa/regress_distances.r \
+                --glmname $glmname \
+                --atlas_name $atlas_name \
+                --space $space \
+                --roi_col $roi_col \
+                --subjlist $subjlist \
+                --waves $wave \
+                --sessions $session \
+                --measure $measure \
+                --prewh $prewh \
+                --ttype_subset $ttype_subset \
+                --suffix "__seswave-"$session"_"$wave
+        done    
+    done
+done
