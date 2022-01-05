@@ -38,10 +38,10 @@ task <- "Stroop"
 
 if (interactive()) { 
     glmname <- "lsall_1rpm"
-    atlas_name <- "glasser2016"
+    atlas_name <- "schaefer2018_17_200"
     roi_col <- "parcel"
     space <- "fsaverage5"
-    prewh <- "obsall"  ## obsresamp, obsall, obsresampbias, obsresamppc50, obsbias, obspc50
+    prewh <- "obsallave"
     subjlist <- "mi1"
     subjects <- fread(here(paste0("out/subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
@@ -55,7 +55,8 @@ if (interactive()) {
     print(args)
 }
 
-stopifnot(prewh %in% expected$prewh)
+stopifnot(prewh == expected$prewh)
+if (prewh != "obsallave") stop("currently not configured for prewhitening other than 'obsallave'")
 
 atlas <- load_atlas(atlas_name, space)
 rois <- unique(atlas$key[[roi_col]])
@@ -66,18 +67,9 @@ if (atlas_name == "glasser2016" && grepl("fsaverage", space)) {
 roiset <- paste0(atlas_name, "_", roi_col)
 
 
-if (prewh %in% c("obsresamp", "obsall")) {
-    ttype_subset <- "all"
-} else if (prewh %in% c("obsresampbias", "obsbias")) {
-    ttype_subset <- "bias"
-} else if (prewh %in% c("obsresamppc50", "obspc50")) {
-    ttype_subset <- "pc50"
-} else {
-    stop("unexpected input for prewh argument")
-}
-
 
 ## execute ----
+
 
 input <- construct_filenames_h5(
     prefix = "coefs", subjects = subjects, waves = waves, sessions = sessions, rois = rois, runs = runs, 
@@ -92,60 +84,68 @@ if (!overwrite) {
     input <- input[!dset_exists, ]
 }
 
+input[, id := paste0(subj, wave, session, roi)]
+id <- unique(input$id)
 
 cl <- makeCluster(n_cores, type = "FORK", outfile = "")
 registerDoParallel(cl)
-res <- foreach(ii = seq_along(input$file_name), .inorder = FALSE) %dopar% {
+res <- foreach(ii = seq_along(id), .inorder = FALSE) %dopar% {
 
-    input_val <- input[ii, ]
-    subject <- input_val[, subj]
-    session <- input_val[, session]
-    wave <- input_val[, wave]
-    run <- input_val[, run]
-    roi <- input_val[, roi]
+    input_ii <- input[id == id[ii], ]  ## get all runs for single subj*wave*sess*roi
+    
+    subject <- input_ii[, unique(subj)]
+    session <- input_ii[, unique(session)]
+    wave <- input_ii[, unique(wave)]
+    roi <- input_ii[, unique(roi)]
 
-    B <- read_dset(input_val$file_name, input_val$dset_name)
+    ## read betas and get indices for good vertices (i.e., with signal variance), idx:
+    B <- enlist(runs)
+    idx <- enlist(runs)
+    for (run in runs) {
+        B[[run]] <- read_dset(input_ii$file_name[input_ii$run == run], input_ii$dset_name[input_ii$run == run])
+        ## get inds for verts with BOLD:
+        idx[[run]] <- which(!is_equal(Var(B[[run]], 1), 0))
+    }
+    idx <- Reduce(union, idx)
     
-    ## remove trial-wise variance due to conditions from each voxel
-    X <- indicator(colnames(B))  ## colnames of B gives the condition
-    resids <- resid(.lm.fit(X, t(B)))
-    
-    ## estimate covariance matrix of residuals and invert
-    resids <- resids[rownames(resids) %in% ttypes[[ttype_subset]], ]  ## extract specified trialtypes
-    if (grepl("resamp", prewh)) {
-        S <- resample_apply_combine(
-            x = t(resids), 
-            resample_idx = get_resampled_idx(
-                conditions = rownames(resids), 
-                n_resamples, 
-                expected_min = expected_min[[paste0(session, "_", ttype_subset)]]
-                ),
-            apply_fun = function(.x) CovEst.2010OAS(t(.x))$S,
-            combine_fun = "iterative_add",
-            outdim = c(ncol(resids), ncol(resids))
+    ## regress task-related variance from each vertex:
+    resids <- enlist(runs)
+    for (run in runs) {
+        Brun <- B[[run]][idx, ]  ## keep only good verts
+        ## remove trial-wise variance due to conditions from each vertex:
+        X <- indicator(colnames(Brun))  ## colnames of B gives the condition
+        resids[[run]] <- resid(.lm.fit(X, t(Brun)))
+    }
+
+    ## estimate average covariance matrix:
+    S <- lapply(resids, CovEst.2010OAS)
+    S_bar <- Reduce("+", lapply(S, function(x) x$S)) / n_run  ## average over folds
+    W <- sqrtm(S_bar)$Binv  ## invert and sqrt, yields sqrt of noise precision matrix; NB: sqrtm is slow in high-D
+
+    ## apply to each run and save:
+    out <- enlist(runs)
+    for (run in runs) {    
+        
+        Bw <- crossprod(W, B[[run]])
+
+        out[[run]] <- write_dset(
+            mat = Bw,
+            dset_prefix = "coefs", 
+            subject = subject, 
+            session = session, 
+            wave = wave, 
+            run = run, 
+            roiset = roiset, 
+            roi = roi,
+            glmname = glmname,
+            prewh = prewh, 
+            write_colnames = TRUE
             )
-    } else {
-        S <- CovEst.2010OAS(resids)
+
     }
     
-    W <- crossprod(sqrtm(S$S)$Binv, B)  ## apply sqrt of inverse
-
-    out <- write_dset(
-        mat = W,
-        dset_prefix = "coefs", 
-        subject = subject, 
-        session = session, 
-        wave = wave, 
-        run = run, 
-        roiset = roiset, 
-        roi = roi,
-        glmname = glmname,
-        prewh = prewh, 
-        write_colnames = TRUE
-        )
-
-    c(out, rho = S$rho)  ## returns metadata
-
+    for (run in runs) out[[run]] <- append(out[[run]], list(rho = S[[run]]$rho))
+    do.call(rbind, out)  ## for each run, return file_name, dset_name, and shrinkage factor rho
 
 }
 stopCluster(cl)
