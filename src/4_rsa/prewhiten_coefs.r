@@ -38,7 +38,7 @@ task <- "Stroop"
 
 if (interactive()) { 
     glmname <- "lsall_1rpm"
-    atlas_name <- "glasser2016_parcel"
+    atlas_name <- "glasser2016"
     roi_col <- "parcel"
     space <- "fsaverage5"
     prewh <- "obsall"  ## obsresamp, obsall, obsresampbias, obsresamppc50, obsbias, obspc50
