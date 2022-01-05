@@ -47,7 +47,7 @@ if (interactive()) {
     waves <- "wave1"
     sessions <- "proactive"
     n_cores <- 10
-    ii <- 2#321  ## Vis: 331, SomMot: 341
+    ii <- 721
     overwrite <- FALSE
     n_resamples <- 1E2
 } else {
@@ -98,7 +98,7 @@ res <- foreach(ii = seq_along(id), .inorder = FALSE) %dopar% {
     wave <- input_ii[, unique(wave)]
     roi <- input_ii[, unique(roi)]
 
-    ## read betas and get indices for good vertices (i.e., with signal variance), idx:
+    ## read betas and extract good vertices (i.e., with signal variance), idx:
     B <- enlist(runs)
     idx <- enlist(runs)
     for (run in runs) {
@@ -107,16 +107,15 @@ res <- foreach(ii = seq_along(id), .inorder = FALSE) %dopar% {
         idx[[run]] <- which(!is_equal(Var(B[[run]], 1), 0))
     }
     idx <- Reduce(union, idx)
-    
-    ## regress task-related variance from each vertex:
+    B_good <- lapply(B, function(x) x[idx, ])
+
+    ## remove trial-wise variance among conditions from each vertex:
     resids <- enlist(runs)
     for (run in runs) {
-        Brun <- B[[run]][idx, ]  ## keep only good verts
-        ## remove trial-wise variance due to conditions from each vertex:
-        X <- indicator(colnames(Brun))  ## colnames of B gives the condition
-        resids[[run]] <- resid(.lm.fit(X, t(Brun)))
+        X <- indicator(colnames(B_good[[run]]))  ## colnames of B gives the condition
+        resids[[run]] <- resid(.lm.fit(X, t(B_good[[run]])))
     }
-
+    
     ## estimate average covariance matrix:
     S <- lapply(resids, CovEst.2010OAS)
     S_bar <- Reduce("+", lapply(S, function(x) x$S)) / n_run  ## average over folds
