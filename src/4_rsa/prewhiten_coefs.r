@@ -125,7 +125,7 @@ res <- foreach(ii = seq_along(id), .inorder = FALSE) %dopar% {
     out <- enlist(runs)
     for (run in runs) {    
         
-        Bw <- crossprod(W, B[[run]])
+        Bw <- crossprod(W, B_good[[run]])
 
         out[[run]] <- write_dset(
             mat = Bw,
