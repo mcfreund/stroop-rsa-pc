@@ -55,7 +55,7 @@ if (interactive()) {
     print(args)
 }
 
-stopifnot(prewh == expected$prewh)
+stopifnot(prewh %in% expected$prewh)
 if (prewh != "obsallave") stop("currently not configured for prewhitening other than 'obsallave'")
 
 atlas <- load_atlas(atlas_name, space)
