@@ -45,7 +45,7 @@ strooprsa <- fread("https://raw.githubusercontent.com/mcfreund/stroop-rsa/master
 strooprsa <- unique(strooprsa[, .(subj, is.analysis.group)])
 strooprsa[, .N, by = is.analysis.group]
 reanalysis_primary <- strooprsa[is.analysis.group == TRUE, "subj"]
-reanalysis_cotwin <- strooprsa[is.analysis.group == TRUE, "subj"]
+reanalysis_cotwin <- strooprsa[is.analysis.group == FALSE, "subj"]
 
 fwrite(reanalysis_primary, here("out", "subjlist_jneurosci_primary.txt"), col.names = FALSE)
 fwrite(reanalysis_cotwin, here("out", "subjlist_jneurosci_cotwin.txt"), col.names = FALSE)
