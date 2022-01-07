@@ -90,8 +90,8 @@ echo $(date)
 
 ## prewhiten
 
-n_cores=12
-prewh="obsall"
+n_cores=28
+prewh="obsallave"
 echo $(date)
 for atlas_name in ${atlas_names[@]}
 do
