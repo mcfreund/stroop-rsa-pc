@@ -8,7 +8,7 @@ library(profvis)
 source(here("src", "stroop-rsa-pc.R"))
 
 n_trial <- 100
-n_vertex <- 1000
+n_vertex <- 500
 n_resamples <- 10000
 expected_min <- n_trial/10
 set.seed(0)
