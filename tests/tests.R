@@ -115,3 +115,46 @@ crcor <- function(x1, x2, n_resamples, expected_min){
     tanh(Reduce("+", res) / length(res))  ## take mean over resamples and invert atanh
 
 }
+
+
+## ----
+
+get_resampled_idx2 <- function(conditions, n_resamples, expected_min, seed = 0) {
+    stopifnot(is.character(conditions) || is.numeric(n_resamples) || is.numeric(expected_min))
+    set.seed(seed)
+
+    n_conditions <- length(conditions)
+    groups_list <- split(seq_along(conditions), conditions)
+    resample_to <- Reduce(min, lapply(groups_list, length))
+    if (resample_to != expected_min) stop("unexpected minimum n trials")
+    
+    replicate(n_resamples, unlist(lapply(groups_list, resample, size = resample_to)), simplify = FALSE)
+
+}
+crcor2 <- function(x1, x2, n_resamples, expected_min){
+    stopifnot(length(dim(x1)) == 2 || length(dim(x2)) == 2)
+    
+    nms1 <- colnames(x1)
+    nms2 <- colnames(x2)
+    g1 <- unique(nms1)
+    g2 <- unique(nms2)
+
+    resample_idx1 <- 
+        get_resampled_idx2(conditions = nms1, n_resamples = n_resamples, expected_min = expected_min)
+    resample_idx2 <- 
+        get_resampled_idx2(conditions = nms2, n_resamples = n_resamples, expected_min = expected_min)
+
+    A1 <- averaging_matrix(rep(g1, each = expected_min))
+    A2 <- averaging_matrix(rep(g2, each = expected_min))
+    
+    res <- matrix(0, ncol = ncol(A2), nrow = ncol(A1), dimnames = list(colnames(A1), colnames(A2)))
+    for (ii in seq_len(n_resamples)) {
+        idx1 <- resample_idx1[[ii]]
+        idx2 <- resample_idx2[[ii]]
+        x1i <- x1[, idx1, drop = FALSE]
+        x2i <- x2[, idx2, drop = FALSE]
+        res <- res + atanh(cor(x1i %*% A1, x2i %*% A2))
+    }
+    tanh(res / n_resamples)
+
+}

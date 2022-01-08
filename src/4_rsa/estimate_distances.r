@@ -41,13 +41,13 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
     subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
     sessions <- "proactive"
-    measure <- "cveuc"  ## crcor
+    measure <- "crcor"  ## crcor
     prewh <- "none"
     ttype_subset <- "bias"
     ii <- 596
-    n_cores <- 1
+    n_cores <- 28
     run_i <- 1
-    n_resamples <- 1
+    n_resamples <- 1E4
     overwrite <- TRUE
 } else {
     source(here("src", "parse_args.r"))
@@ -76,6 +76,7 @@ input <- construct_filenames_h5(
 input[, g := paste0(subj, "__", wave, "__", session, "__", roi)]
 l <- split(input, by = "g")
 
+
 ## skip computation of existing output files if overwrite == FALSE:
 
 fname <- construct_filename_rdm(
@@ -93,6 +94,37 @@ if (!overwrite) {
         }
     }
 }
+
+
+## precompute index matrices for crcor resampling:
+
+if (measure == "crcor") {
+    pick_an_roi <- unique(input$roi)[1]  ## given subj*sess*wave*run, roi doesn't matter b/c cond orders all same
+    is_roi <- vapply(l, function(x) unique(x$roi) == pick_an_roi, logical(1))
+    l_idx <- l[is_roi]
+    names(l_idx) <- gsub(paste0("__", pick_an_roi), "", names(l_idx))  ## remove roi name from list names
+    l_idx <- mclapply(
+        l_idx, 
+        function(x) {
+            ses <- unique(x$session)
+            nms1 <- colnames(read_dset(x[run == "run1", file_name], x[run == "run1", dset_name]))  ## cond orders run 1
+            nms2 <- colnames(read_dset(x[run == "run2", file_name], x[run == "run2", dset_name]))  ## "  " run2
+            ## pull only trialtypes being analyzed:
+            nms1 <- nms1[nms1 %in% intersect(ttypes_by_run[[ses]]$run1, ttypes[[ttype_subset]])]
+            nms2 <- nms2[nms2 %in% intersect(ttypes_by_run[[ses]]$run2, ttypes[[ttype_subset]])]
+            ## resample trial indices:
+            idx1 <- get_resampled_idx(
+                        nms1, n_resamples, expected_min = expected_min[[paste0(ses, "_", ttype_subset)]], seed = 0
+                    )
+            idx2 <- get_resampled_idx(
+                        nms2, n_resamples, expected_min = expected_min[[paste0(ses, "_", ttype_subset)]], seed = 0
+                    )
+            list(run1 = idx1, run2 = idx2)
+        },
+        mc.cores = n_cores
+    )
+}
+
 
 cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
@@ -132,11 +164,8 @@ res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %d
             scale = TRUE
         )
     } else if (measure == "crcor") {    ## cross-run correlation (with downsampling)
-        res <- crcor(
-            B$run1, B$run2, 
-            n_resamples = n_resamples, 
-            expected_min = expected_min[[paste0(ses, "_", ttype_subset)]]
-            )
+        id <- unique(input_val[, paste0(subj, "__", wave, "__", session)])
+        res <- crcor(x1 = B$run1, x2 = B$run2, idx1 = l_idx[[id]]$run1, idx2 = l_idx[[id]]$run2)
     }
 
     #resall[[ii]] <- res
