@@ -8,12 +8,12 @@ library(profvis)
 source(here("src", "stroop-rsa-pc.R"))
 
 n_trial <- 100
-n_vertex <- 100
+n_vertex <- 1000
 n_resamples <- 10000
-expected_min <- 10
+expected_min <- n_trial/10
 set.seed(0)
-x1 <- matrix(rnorm(n_trial*n_vertex), nrow = n_trial, dimnames = list(NULL, rep(letters[1:10], 10)))
-x2 <- matrix(rnorm(n_trial*n_vertex), nrow = n_trial, dimnames = list(NULL, rep(letters[1:10], 10)))
+x1 <- matrix(rnorm(n_trial*n_vertex), nrow = n_vertex, dimnames = list(NULL, rep(letters[1:10], n_trial/10)))
+x2 <- matrix(rnorm(n_trial*n_vertex), nrow = n_vertex, dimnames = list(NULL, rep(letters[1:10], n_trial/10)))
 
 get_resampled_idx <- function(conditions, n_resamples, expected_min, seed = 0) {
   stopifnot(is.character(conditions) || is.numeric(n_resamples) || is.numeric(expected_min))
