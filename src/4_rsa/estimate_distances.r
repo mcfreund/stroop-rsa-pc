@@ -128,7 +128,11 @@ if (measure == "crcor") {
 
 cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
-res <- foreach(ii = seq_along(l), .final = function(x) setNames(x, names(l))) %dopar% {
+res <- foreach(
+    ii = seq_along(l[1:4]), 
+    .final = function(x) setNames(x, names(l)[1:4]), 
+    .noexport = "crcor_rcpp"
+    ) %dopar% {
 #resall <- enlist(names(l))
 #for (ii in seq_along(l)) {
 #for (ii in seq(ii, length(l))) {
