@@ -43,7 +43,7 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
     sessions <- "proactive"
     measure <- "crcor"  ## crcor
     prewh <- "none"
-    ttype_subset <- "bias"
+    ttype_subset <- "all"
     ii <- 596
     n_cores <- 28
     run_i <- 1
@@ -113,12 +113,8 @@ if (measure == "crcor") {
             nms1 <- nms1[nms1 %in% intersect(ttypes_by_run[[ses]]$run1, ttypes[[ttype_subset]])]
             nms2 <- nms2[nms2 %in% intersect(ttypes_by_run[[ses]]$run2, ttypes[[ttype_subset]])]
             ## resample trial indices:
-            idx1 <- get_resampled_idx(
-                        nms1, n_resamples, expected_min = expected_min[[paste0(ses, "_", ttype_subset)]], seed = 0
-                    )
-            idx2 <- get_resampled_idx(
-                        nms2, n_resamples, expected_min = expected_min[[paste0(ses, "_", ttype_subset)]], seed = 0
-                    )
+            idx1 <- get_resampled_idx(nms1, n_resamples, seed = 0)
+            idx2 <- get_resampled_idx(nms2, n_resamples, seed = 0)
             list(run1 = idx1, run2 = idx2)
         },
         mc.cores = n_cores
