@@ -1,10 +1,12 @@
+## looping variables
 atlas_names=("glasser2016" "schaefer2018_17_200")
-ttype_subsets=("all")
+ttype_subsets=("bias" "pc50" "all")
 measures=("crcor")
+subjlists=("mi1" "mc1")
+sessions=("proactive" "baseline")
 
-subjlist=("mi1")
+## constants
 wave=("wave1")
-session=("proactive")
 glmname="lsall_1rpm"
 roi_col="parcel"
 prewh="none"
@@ -13,25 +15,27 @@ overwrite="TRUE"
 n_resamples=10000
 space="fsaverage5"
 
-## excluded due to missing (2021-12-17):
-# mi1 DMCC9478705
 
-
-echo $(date)
-for measure in ${measures[@]}
+for i in ${!subjlists[@]}
 do
+    
+    subjlist=${subjlists[$i]}
+    session=${sessions[$i]}
 
-    echo $measure
-
-    for atlas_name in ${atlas_names[@]}
+    for ttype_subset in ${ttype_subsets[@]}
     do
 
-        echo $atlas_name
+        if [[ ($ttype_subset == "bias" || $ttype_subset == "pc50") && $session == "proactive" ]]
+        then 
+            continue
+        fi
 
-        for ttype_subset in ${ttype_subsets[@]}
+        echo $session $ttype_subset ===============================================================
+
+        for atlas_name in ${atlas_names[@]}
         do
-
-            echo $ttype_subset
+            
+            echo $atlas_name $(date)  ------------------
 
             Rscript ./src/4_rsa/estimate_distances.r \
                 --glmname $glmname \
@@ -60,11 +64,8 @@ do
                 --prewh $prewh \
                 --ttype_subset $ttype_subset \
                 --suffix "__seswave-"$session"_"$wave
-
-        done
             
+        done
     done
-    
 done
-echo $(date)
 
