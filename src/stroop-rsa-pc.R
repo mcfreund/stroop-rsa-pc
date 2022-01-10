@@ -150,52 +150,46 @@ cvdist <- function(x1, x2, m = mikeutils::contrast_matrix(ncol(x1)), nms = NULL,
     D
 }
 
-
-averaging_matrix <- function(x) {
-    A <- indicator(x)
-    As <- tcrossprod(A, diag(1/colSums(A)))
-    colnames(As) <- unique(x)
-    As
-}
-
-
-get_resampled_idx <- function(conditions, n_resamples, expected_min, seed = 0) {
-  stopifnot(is.character(conditions) || is.numeric(n_resamples) || is.numeric(expected_min))
+get_resampled_idx <- function(conditions, n_resamples, resample_to = NULL, replace = FALSE, seed = 0) {
+  stopifnot(is.character(conditions) || is.numeric(n_resamples))
   set.seed(seed)
   
-  groups_list <- split(seq_along(conditions), conditions)
-  resample_to <- Reduce(min, lapply(groups_list, length))
-  if (resample_to != expected_min) stop("unexpected minimum n trials")
+  groups_list <- split(seq_along(conditions), conditions)  ## sorts list elements alphabetically
+  global_min <- Reduce(min, lapply(groups_list, length))
+  if (is.null(resample_to)) {
+      resample_to <- global_min
+  } else {
+      if (!replace && resample_to > global_min) stop("When replace=FALSE, cannot draw more obs than the global min.")
+  }
+
+  idx <- replicate(n_resamples, unlist(lapply(groups_list, resample, size = resample_to), use.names = FALSE))
+  idx <- t(idx)  ## resamples as rows, conditions as columns
+  colnames(idx) <- rep(names(groups_list), each = resample_to)  ## add back names alphabetically
   
-  t(replicate(n_resamples, unlist(lapply(groups_list, resample, size = resample_to))))
-  
+  idx
+
+}
+
+averaging_matrix <- function(x) {
+    A <- mfutils::indicator(x)
+    As <- tcrossprod(A, diag(1/colSums(A)))
+    colnames(As) <- colnames(A)
+    As
 }
 
 Rcpp::sourceCpp(here::here("src/crcor_rcpp.cpp"))
 
-crcor <- function(x1, x2, idx1 = NULL, idx2 = NULL, expected_min = NULL) {
+crcor <- function(x1, x2, idx1, idx2) {
   stopifnot(length(dim(x1)) == 2 || length(dim(x2)) == 2)
   
   nms1 <- colnames(x1)
   nms2 <- colnames(x2)
-  g1 <- unique(nms1)
-  g2 <- unique(nms2)
+  A1 <- averaging_matrix(colnames(idx1))
+  A2 <- averaging_matrix(colnames(idx2))
 
-  ## resample trial indices if not supplied:
-  if (is.null(idx1) || is.null(idx2)) {
-    if (is.null(expected_min)) stop("expected_min cannot be null when idx1 or idx2 is not supplied.")
-    idx1 <- get_resampled_idx(conditions = nms1, n_resamples = n_resamples, expected_min = expected_min)
-    idx2 <- get_resampled_idx(conditions = nms2, n_resamples = n_resamples, expected_min = expected_min)
-  } else {
-      expected_min <- ncol(idx1)/length(g1)
-      stopifnot(expected_min == ncol(idx2)/length(g2))
-  }
-
-  A1 <- averaging_matrix(rep(g1, each = expected_min))
-  A2 <- averaging_matrix(rep(g2, each = expected_min))
-  
   res <- crcor_rcpp(x1 = x1, x2 = x2, idx1 = idx1 - 1L, idx2 = idx2 - 1L, A1 = A1, A2 = A2)  ## Cpp uses 0-based idx
-  dimnames(res) <- list(g1, g2)
+  dimnames(res) <- list(colnames(A1), colnames(A2))
+  
   res
   
 }
