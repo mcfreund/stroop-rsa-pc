@@ -1,16 +1,16 @@
 ## looping variables
 atlas_names=("glasser2016" "schaefer2018_17_200")
 ttype_subsets=("bias" "pc50" "all")
-measures=("crcor")
 subjlists=("mi1" "mc1")
 sessions=("proactive" "baseline")
 
 ## constants
+measure=("crcor")
 wave=("wave1")
 glmname="lsall_1rpm"
 roi_col="parcel"
 prewh="none"
-n_cores=28
+n_cores=24
 overwrite="TRUE"
 n_resamples=10000
 space="fsaverage5"
