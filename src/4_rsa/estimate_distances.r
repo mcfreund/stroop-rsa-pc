@@ -43,7 +43,7 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
     sessions <- "proactive"
     measure <- "crcor"  ## crcor
     prewh <- "none"
-    ttype_subset <- "bias"
+    ttype_subset <- "all"
     ii <- 596
     n_cores <- 28
     run_i <- 1
@@ -113,12 +113,9 @@ if (measure == "crcor") {
             nms1 <- nms1[nms1 %in% intersect(ttypes_by_run[[ses]]$run1, ttypes[[ttype_subset]])]
             nms2 <- nms2[nms2 %in% intersect(ttypes_by_run[[ses]]$run2, ttypes[[ttype_subset]])]
             ## resample trial indices:
-            idx1 <- get_resampled_idx(
-                        nms1, n_resamples, expected_min = expected_min[[paste0(ses, "_", ttype_subset)]], seed = 0
-                    )
-            idx2 <- get_resampled_idx(
-                        nms2, n_resamples, expected_min = expected_min[[paste0(ses, "_", ttype_subset)]], seed = 0
-                    )
+            set.seed(0)  ## for reproducibility
+            idx1 <- resample_idx(nms1, n_resamples)
+            idx2 <- resample_idx(nms2, n_resamples)
             list(run1 = idx1, run2 = idx2)
         },
         mc.cores = n_cores
@@ -126,58 +123,62 @@ if (measure == "crcor") {
 }
 
 
+## make larger chunks for each core by redefining looping variable (have each core loop over ROIs):
+
+input_subset <- rbindlist(l)
+## each row of input_subset defines the location of data for a single subject*wave*session*roi (both runs):
+input_subset[, g := paste0(subj, "__", wave, "__", session)]  ## run subject*wave*session in parallel (ROI in serial)
+l <- split(input_subset, by = "g")
+
+
 cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
-res <- foreach(
-    ii = seq_along(l[1:4]), 
-    .final = function(x) setNames(x, names(l)[1:4]), 
-    .noexport = "crcor_rcpp"
-    ) %dopar% {
-#resall <- enlist(names(l))
-#for (ii in seq_along(l)) {
-#for (ii in seq(ii, length(l))) {
+res <- foreach(ii = seq_along(l), .combine = c) %dopar% {
 
-    input_val <- l[[ii]]
-    ses <- unique(input_val$session)
-    
-    ## read betas and subset trialtypes, vertices
-    
-    B <- enlist(runs)
-    is_bad_vert <- enlist(runs)
-    for (run_i in seq_along(runs)) {
-        Bi <- read_dset(input_val[run == runs[run_i], file_name], input_val[run == runs[run_i], dset_name])
-        ttypes_to_get <- intersect(ttypes_by_run[[ses]][[run_i]], ttypes[[ttype_subset]])
-        Bi <- Bi[, colnames(Bi) %in% ttypes_to_get]  ## discard low-trialcount trialtypes
-        B[[run_i]] <- Bi
-        is_bad_vert[[run_i]] <- is_equal(Var(Bi, 1), 0)  ## verts with no BOLD
-    }
-    ## subset vertices:
-    is_good_vert <- !Reduce("|", is_bad_vert)
-    if (sum(is_good_vert) == 0) {
-        stop(c("no good verts: ", paste0(input_val[1, 1:5], sep = " ")))
-    } else {
-        B <- lapply(B, function(x) x[is_good_vert, ])  ## discard vertices with no BOLD
-    }
-    
-    ## estimate distances/similarities
+    inputs <- l[[ii]]
+    ses <- unique(inputs$session)
+    id <- paste0(unique(inputs[, c("subj", "wave", "session")]), collapse = "__")
 
-    if (measure == "cveuc") {  ## cross-validated euclidean
-        res <- cvdist(
-            average(B$run1, g = colnames(B$run1)),
-            average(B$run2, g = colnames(B$run2)),
-            scale = TRUE
-        )
-    } else if (measure == "crcor") {    ## cross-run correlation (with downsampling)
-        id <- unique(input_val[, paste0(subj, "__", wave, "__", session)])
-        res <- crcor(x1 = B$run1, x2 = B$run2, idx1 = l_idx[[id]]$run1, idx2 = l_idx[[id]]$run2)
+    res <- enlist(paste0(id, "__", rois))
+    for (roi_i in seq_along(rois)) {
+        input_val <- inputs[roi == rois[roi_i]]
+
+        ## read betas and subset trialtypes, vertices
+        
+        B <- enlist(runs)
+        is_bad_vert <- enlist(runs)
+        for (run_i in seq_along(runs)) {
+            Bi <- read_dset(input_val[run == runs[run_i], file_name], input_val[run == runs[run_i], dset_name])
+            ttypes_to_get <- intersect(ttypes_by_run[[ses]][[run_i]], ttypes[[ttype_subset]])
+            B[[run_i]] <- Bi[, colnames(Bi) %in% ttypes_to_get]  ## discard low-trialcount trialtypes
+            is_bad_vert[[run_i]] <- is_equal(Var(B[[run_i]], 1), 0)  ## verts with no BOLD
+        }
+        ## subset vertices:
+        is_good_vert <- !Reduce("|", is_bad_vert)
+        if (sum(is_good_vert) == 0) {
+            stop(c("no good verts: ", paste0(input_val[1, 1:5], sep = " ")))
+        } else {
+            B <- lapply(B, function(x) x[is_good_vert, ])  ## discard vertices with no BOLD
+        }
+        
+        ## estimate distances/similarities
+
+        if (measure == "cveuc") {  ## cross-validated euclidean
+            res[[roi_i]] <- cvdist(
+                average(B$run1, g = colnames(B$run1)),
+                average(B$run2, g = colnames(B$run2)),
+                scale = TRUE
+            )
+        } else if (measure == "crcor") {    ## cross-run correlation (with downsampling)
+            res[[roi_i]] <- crcor(x1 = B$run1, x2 = B$run2, idx1 = l_idx[[id]]$run1, idx2 = l_idx[[id]]$run2)
+        }
+
     }
 
-    #resall[[ii]] <- res
     res
 
 }
 stopCluster(cl)
-
 
 ## write arrays within hdf5 file
 
