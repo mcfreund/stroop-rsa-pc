@@ -5,7 +5,8 @@
 
 out/glms
 out/parcellated
-out/res
+out/res/rdm*
+out/res/*Schaefer2018*
 out/sim
 
 src/scratch
