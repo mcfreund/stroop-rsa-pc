@@ -113,6 +113,7 @@ if (measure == "crcor") {
             nms1 <- nms1[nms1 %in% intersect(ttypes_by_run[[ses]]$run1, ttypes[[ttype_subset]])]
             nms2 <- nms2[nms2 %in% intersect(ttypes_by_run[[ses]]$run2, ttypes[[ttype_subset]])]
             ## resample trial indices:
+            set.seed(0)  ## for reproducibility
             idx1 <- resample_idx(nms1, n_resamples)
             idx2 <- resample_idx(nms2, n_resamples)
             list(run1 = idx1, run2 = idx2)
@@ -130,13 +131,9 @@ input_subset[, g := paste0(subj, "__", wave, "__", session)]  ## run subject*wav
 l <- split(input_subset, by = "g")
 
 
-cl <- makeCluster(n_cores, type = "PSOCK")
+cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
-res <- foreach(
-    ii = seq_along(l), 
-    .combine = c,
-    .packages = c("mfutils", "data.table")
-    ) %dopar% {
+res <- foreach(ii = seq_along(l), .combine = c) %dopar% {
 
     inputs <- l[[ii]]
     ses <- unique(inputs$session)
@@ -173,7 +170,6 @@ res <- foreach(
                 scale = TRUE
             )
         } else if (measure == "crcor") {    ## cross-run correlation (with downsampling)
-            id <- unique(input_val[, paste0(subj, "__", wave, "__", session)])
             res[[roi_i]] <- crcor(x1 = B$run1, x2 = B$run2, idx1 = l_idx[[id]]$run1, idx2 = l_idx[[id]]$run2)
         }
 

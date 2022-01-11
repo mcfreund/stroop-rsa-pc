@@ -49,8 +49,10 @@ B1 <- read_dset(fname1, dname1)
 B2 <- read_dset(fname2, dname2)
 
 res_orig <- crcor_orig(B1, B2, n_resamples, 3)
-idx1 <- get_resampled_idx(colnames(B1), n_resamples)
-idx2 <- get_resampled_idx(colnames(B2), n_resamples)
+set.seed(0)
+idx1 <- resample_idx(colnames(B1), n_resamples)
+set.seed(0)
+idx2 <- resample_idx(colnames(B2), n_resamples)
 res <- crcor(x1 = B1, x2 = B2, idx1, idx2)
 all.equal(res_orig, res)
 #res_sort <- res[rownames(res_orig), colnames(res_orig)]
