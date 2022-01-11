@@ -3,6 +3,15 @@ library(data.table)
 library(dplyr)
 
 source(here("src", "stroop-rsa-pc.R"))
+sample_cotwins <- function(x) {
+  set.seed(0)
+  twinpairs <- unique(x$twinpair[duplicated(x$twinpair)])
+  x <- x %>% filter(twinpair %in% twinpairs)  ## only twins in sample
+  x %>%
+    group_by(twinpair) %>%
+    sample_n(1) %>%
+    pull(subj)
+}
 
 s <- fread(here("out", "subjlist.csv"))
 
@@ -55,15 +64,6 @@ reanalysis <- c(reanalysis_primary$subj, reanalysis_cotwin$subj)
 ## jneurosci replication list: wave1 proactive NOT IN reanalysis
 
 replication <- s[session == "proactive" & wave == "wave1" & !subj %in% reanalysis]
-sample_cotwins <- function(x) {
-  set.seed(0)
-  twinpairs <- unique(x$twinpair[duplicated(x$twinpair)])
-  x <- x %>% filter(twinpair %in% twinpairs)  ## only twins in sample
-  x %>%
-    group_by(twinpair) %>%
-    sample_n(1) %>%
-    pull(subj)
-}
 replication_cotwins <- sample_cotwins(replication)
 replication_primary <- replication[!subj %in% replication_cotwins, subj]
 length(replication_cotwins)
@@ -77,3 +77,7 @@ fwrite(as.data.frame(replication_primary), here("out", "subjlist_jneurosci_repli
 fwrite(as.data.frame(replication_cotwins), here("out", "subjlist_jneurosci_replication_cotwin.txt"), col.names = FALSE)
 
 
+## MC1 list
+s_mc1 <- s[session == "baseline" & wave == "wave1"]
+mc1_cotwins_exclude <- sample_cotwins(s_mc1)
+fwrite(s_mc1[!subj %in% mc1_cotwins_exclude, "subj"], here("out", "subjlist_mc1_unrel.txt"), col.names = FALSE)
