@@ -28,6 +28,19 @@ library(mfutils)
 
 source(here("src", "stroop-rsa-pc.R"))
 
+run_model <- function(expr, path, reuse = TRUE) {
+  ## https://github.com/paul-buerkner/brms/issues/472
+  path <- paste0(path, ".Rds")
+  if (reuse) {
+    fit <- suppressWarnings(try(readRDS(path), silent = TRUE))
+  }
+  if (is(fit, "try-error")) {
+    fit <- eval(expr)
+    saveRDS(fit, file = path)
+  }
+  fit
+}
+
 ## settings
 
 opts_chunk$set(echo = TRUE)
@@ -92,28 +105,35 @@ ols <- drt %>%
 f_subj_stroop <- formula(rt ~ trial_type * pc + (trial_type | subj))
   
 m1_ebm_gauss <- lmer(f_subj_stroop, data = drt)
-m1_ebm_gauss_het <- lme(
-  rt ~ trial_type * pc, 
-  random  = ~ trial_type | subj,
-  data    = drt,
-  weights = varIdent(form = ~ 1 | subj),
-  control = cl1,
-  method  = "REML"
+
+m1_ebm_gauss_het <- run_model(
+  expr = lme(
+    rt ~ trial_type * pc, 
+    random  = ~ trial_type | subj,
+    data    = drt,
+    weights = varIdent(form = ~ 1 | subj),
+    control = cl1,
+    method  = "REML"
+  ),
+  path = here("out", "behav", "m1_ebm_gauss_het")
 )
+
 m1_hbm_gauss <- brm(
   f_subj_stroop, 
   data = drt, 
   cores = 4,
   control = list(adapt_delta = 0.99),
   iter = 4000,
-  
+  file = here("out", "behav", "m1_hbm_gauss")
   )
+
 m1_hbm_gauss_het <- brm(
   brmsformula(f_subj_stroop, sigma ~ (1 | subj)), 
   data = drt, 
   cores = 4,
   control = list(adapt_delta = 0.99),
-  iter = 4000
+  iter = 4000,
+  file = here("out", "behav", "m1_hbm_gauss_het")
   )
 
 ```
