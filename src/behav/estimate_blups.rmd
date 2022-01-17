@@ -1,0 +1,184 @@
+---
+title: "behavioral analysis: estimating subject-level stroop effects"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 3
+        toc_float: true
+        number_sections: true
+        df_print: paged
+        code_folding: hide
+---
+
+
+```{r setup, results = FALSE, message = FALSE, warning = FALSE}
+
+## libraries
+
+library(here)
+library(data.table)
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(nlme)
+library(lme4)
+library(brms)
+library(mfutils)
+
+source(here("src", "stroop-rsa-pc.R"))
+
+## settings
+
+opts_chunk$set(echo = TRUE)
+theme_set(theme_bw(base_size = 10))
+cl1 <- lmeControl(opt = "optim", maxIter = 1E5, msMaxIter = 1E5, niterEM = 1E5, msMaxEval = 1E5)
+ 
+## constants
+
+subjects_mi1 <- c(
+    fread(here("out", paste0("subjlist_jneurosci_replication_primary.txt")))[[1]],
+    fread(here("out", paste0("subjlist_jneurosci_primary.txt")))[[1]]
+)
+
+## data
+
+d <- 
+    fread(here("in", "behavior-and-events_stroop_2021-10-20_nice.csv")) %>% 
+    select(subj, session, wave, run, trial_num, item, color, word, trial_type, pc, acc, rt) %>%
+    filter(session == "proactive", wave == "wave1", subj %in% subjects_mi1)
+
+drt <- filter(d, !is.na(rt))
+
+```
+
+
+# Intro
+
+Currently configured for proactive subjects in jneurosci+replication sample, N = `r length(subjects_mi1)`.
+Based off of [stroop-rsa script on github](https://github.com/mcfreund/stroop-rsa/blob/master/code/behav/prelim_behavioral_models.R).
+
+
+```{r}
+
+drt <- filter(drt, rt > 250 & rt < 3000, acc == 1)
+drt$is_artifactual_rt <- FALSE
+drt$is_artifactual_rt[drt$subj %in% c("849971", "161832") & drt$rt < 500] <- TRUE
+
+drt %>%
+    ggplot(aes(rt)) +
+    geom_histogram(bins = 100) +
+    facet_grid(vars(session), vars(wave))
+
+```
+
+
+## ols
+
+```{r}
+ols <- drt %>%
+    group_by(subj, trial_type) %>%
+    summarize(rt = mean(rt)) %>%
+    pivot_wider(subj, names_from = c("trial_type"), values_from = "rt") %>%
+    transmute(stroop = incon - congr)
+#fwrite(ols, here("out", "blups_mi1.txt"))
+```
+
+
+## Gaussian models
+
+```{r, cache = TRUE}
+
+f_subj_stroop <- formula(rt ~ trial_type * pc + (trial_type | subj))
+  
+m1_ebm_gauss <- lmer(f_subj_stroop, data = drt)
+m1_ebm_gauss_het <- lme(
+  rt ~ trial_type * pc, 
+  random  = ~ trial_type | subj,
+  data    = drt,
+  weights = varIdent(form = ~ 1 | subj),
+  control = cl1,
+  method  = "REML"
+)
+m1_hbm_gauss <- brm(
+  f_subj_stroop, 
+  data = drt, 
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  iter = 4000,
+  
+  )
+m1_hbm_gauss_het <- brm(
+  brmsformula(f_subj_stroop, sigma ~ (1 | subj)), 
+  data = drt, 
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  iter = 4000
+  )
+
+```
+
+### Results
+
+```{r}
+
+summary(m1_ebm_gauss)
+summary(m1_ebm_gauss_het)
+summary(m1_hbm_gauss)
+summary(m1_hbm_gauss_het)
+
+coefs <- cbind(
+  ols %>% rename(ols = stroop), 
+  ebm_gauss = coef(m1_ebm_gauss)$subj[, "trial_typeincon"],
+  ebm_gauss_het = coef(m1_ebm_gauss_het)[, "trial_typeincon"],
+  hbm_gauss = coef(m1_hbm_gauss)$subj[, "Estimate", "trial_typeincon"],
+  hbm_gauss_het = coef(m1_hbm_gauss_het)$subj[, "Estimate", "trial_typeincon"]
+  )
+
+pairs(coefs[, -1])
+
+cor(coefs[, -1]) %>%
+  melt_mat %>%
+  plot_melted_mat +
+  scale_fill_viridis_c() +
+  geom_text(aes(label = round(value, 3)), color = "grey50") +
+  labs(title = "Correlations in subject-level Stroop effects (RT)", x = "Model type", y = "Model type")
+
+coefs %>%
+  pivot_longer(cols = where(is.numeric)) %>%
+  mutate(name = factor(name, levels = c("ols", "ebm_gauss", "hbm_gauss", "ebm_gauss_het", "hbm_gauss_het"))) %>%
+  ggplot(aes(name, value)) +
+  geom_point() +
+  geom_line(aes(group = subj)) +
+  labs(y = "Subject-level Stroop effect (RT)", x = "Model type")
+
+```
+
+
+#### Relation between scale of residual variance and amount of shrinkage
+
+```{r}
+
+dev_hbm_gauss <- abs(coefs$hbm_gauss - mean(coefs$hbm_gauss))
+dev_hbm_gauss_het <- abs(coefs$hbm_gauss_het - mean(coefs$hbm_gauss_het))
+plot(
+  dev_hbm_gauss,
+  dev_hbm_gauss_het
+)
+hist(dev_hbm_gauss / dev_hbm_gauss_het)
+
+plot(
+  dev_hbm_gauss_het/dev_hbm_gauss,
+  coef(m1_hbm_gauss_het)$subj[, "Estimate", "sigma_Intercept"],
+  pch = 16,
+  ylab = "sigma_Intercept"
+)
+
+
+```
+
+
+```{r}
+fwrite(coefs, here("out", "blups_stroop_mi1.txt"))
+```
+
