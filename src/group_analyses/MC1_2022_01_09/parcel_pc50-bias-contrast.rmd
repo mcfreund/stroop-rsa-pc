@@ -1,0 +1,461 @@
+---
+title: "MC Wave 1 analyses: PC50 vs bias"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 3
+        toc_float: true
+        number_sections: true
+        code_folding: hide
+params:
+    prewh: "none"
+    measure: "crcor"
+    roiset: "glasser2016_parcel"
+---
+
+# intro
+
+
+```{r setup, results = FALSE, message = FALSE, warning = FALSE}
+
+## libraries ----
+
+library(here)
+library(data.table)
+source(here("src", "stroop-rsa-pc.R"))
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(mfutils)
+library(ggseg)
+library(ggsegExtra)
+library(ggsegSchaefer)
+library(ggsegGlasser)
+
+## settings, params ----
+
+opts_chunk$set(echo = TRUE, out.width = "100%")
+theme_set(theme_bw(base_size = 10))
+
+if (exists("params")) {
+  ttype_subset <- params$ttype_subset
+  prewh <- params$prewh
+  measure <- params$measure
+  roiset <- params$roiset
+} else {
+  prewh <- "none"
+  measure <- "crcor"
+  roiset <- "glasser2016_parcel"
+}
+
+theme_surface <- list(
+  theme(
+    axis.text = element_blank(), panel.grid = element_blank(), panel.border = element_blank(),
+    axis.ticks = element_blank(), legend.position = c(0.5, 0.5), legend.title = element_text(size = 5), 
+    legend.background = element_blank(), legend.text = element_text(size = 5), legend.direction = "horizontal",
+    legend.key.height = unit(1/5, "cm"), legend.key.width = unit(1/4, "cm")
+  )
+)
+
+
+## constants ----
+
+wd <- here()
+subjlists <- "mc1"
+seswaves <- c("baseline_wave1")
+glmname <- "lsall_1rpm"
+sessions <- c("baseline")
+statistics <- c("m", "t_stat")
+titles <- c("mean coefficient", "t statistic")
+
+
+## data ----
+
+## read regression weights:
+
+dat <- lapply(
+  c("pc50", "bias"),
+  function(ttype_subset) {
+    fname <- construct_filename_weights(
+        measure = measure, subjlist = subjlists, glmname = glmname, 
+        ttype_subset = ttype_subset, roiset = roiset, prewh = prewh, suffix = paste0("__seswave-", seswaves)
+        )
+    d <- fread(fname)
+    d$ttype_subset <- ttype_subset
+    d
+  }
+)
+dat <- rbindlist(dat)
+
+
+## get ggseg atlas and format data to match:
+
+dat <- dat %>% rename(region = roi)
+
+if (roiset == "schaefer2018_17_200_parcel") {
+  
+  atlas <- schaefer17_200
+  k <- schaefer2018_17_200_fsaverage5$key %>% select(region = parcel, network)
+  
+  rois <- data.frame(
+    region = c(
+    "17Networks_LH_ContA_PFClv_1",
+    "17Networks_LH_ContA_PFCl_1",
+    "17Networks_LH_ContA_PFCl_2",
+    "17Networks_LH_ContA_PFCl_3",
+    "17Networks_RH_ContA_PFCl_1",
+    "17Networks_RH_ContA_PFCl_2",
+    "17Networks_LH_SalVentAttnB_PFCmp_1",
+    "17Networks_RH_SalVentAttnB_PFCmp_1",
+    "17Networks_LH_SalVentAttnA_FrMed_1",
+    "17Networks_RH_SalVentAttnA_FrMed_1"
+    ),
+    location = c(rep("lateral", 6), rep("medial", 4))
+  )
+
+} else if (roiset == "glasser2016_parcel") {
+  
+  atlas <- glasser
+  k <- glasser2016_fsaverage5$key %>% select(region = parcel, network)
+  
+  dat <- dat %>% filter(!region %in% "L_10pp")  ## not in glasser ggseg atlas?
+  ## create region column in ggseg atlas that matches data:
+  hemi <- ifelse(atlas$data$hemi == "left", "L_", "R_")
+  atlas$data$region <- ifelse(is.na(atlas$data$region), NA, paste0(hemi, atlas$data$region))
+  
+  rois <- data.frame(
+    region = combo_paste(c("L_", "R_"), c("SCEF", "8BM",  "p32pr", "a32pr", "p9-46v", "i6-8", "8Av", "8C")),
+    location = c(rep("medial", 8), rep("lateral", 8))
+  )
+  
+}
+
+## add network information:
+atlas$data <- left_join(atlas$data, k, by = "region")
+dat <- left_join(dat, k, by = "region")
+
+
+## calculate ----
+
+## add subject set information:
+
+subjs <- fread(here("out", "subjlist_mc1_unrel.txt"))[[1]]
+
+dat <- dat %>% filter(subject %in% subjs)
+
+dat_sum <- dat %>% 
+  group_by(term, ttype_subset, region) %>%
+  summarize(
+    m = mean(b),
+    t_stat = t.test(b)$statistic, 
+    p = t.test(b, alternative = "greater")$p.value,
+    .groups = "drop_last"
+    ) %>%
+  mutate(p_fdr = p.adjust(p, "fdr"))
+
+
+dat_diff <- dat %>%
+  pivot_wider(id_cols = c("subject", "term", "region"), names_from = "ttype_subset", values_from = "b") %>%
+  mutate(b = pc50 - bias) %>%
+  group_by(term, region) %>%
+  summarize(
+    m = mean(b),
+    t_stat = t.test(b)$statistic,
+    p = t.test(b)$p.value,
+    .groups = "drop_last"
+    ) %>%
+  mutate(p_fdr = p.adjust(p, "fdr"), ttype_subset = "pc50 - bias")
+
+
+dat_sum <- filter(rbind(dat_sum, dat_diff), term %in% models[[measure]])
+
+
+n_subjs <- length(unique(dat$subject))
+
+
+```
+
+
+This file displays group-level RSA model coefficients (means, test statistics).
+
+**Analysis parameters**:
+
+- Item type: `r params$ttype_subset`
+- Prewhitening type: `r params$prewh`
+- Similarity measure: `r params$measure`
+- ROI set: `r params$roiset`
+
+**Subject samples**:
+
+Analyses are conducted with one set of subjects:
+
+- the **baseline wave 1**set: N = `r n_subjs`, unrelated
+
+
+# Brains
+
+## Unthresholded
+
+### Common scale
+
+```{r message = FALSE}
+
+for (stat_i in seq_along(statistics)) {
+  
+  p <- dat_sum %>%
+    ggplot() +
+    geom_brain(
+      aes_string(fill = statistics[stat_i]),
+      atlas = atlas, position = position_brain(side ~ hemi)
+      ) +
+    scale_fill_viridis_c(
+      option = "magma", na.value = "grey",
+      breaks = scales::extended_breaks(4)
+      ) +
+    facet_grid(rows = vars(term), cols = vars(ttype_subset)) +
+    theme_surface +
+    labs(title = titles[stat_i], fill = NULL)
+
+  print(p)
+
+}
+
+```
+
+### Separate scales by model
+
+
+```{r message = FALSE, fig.show = "hold", out.width = "50%"}
+
+for (model_i in seq_along(models[[measure]])) {
+
+  model <- models[[measure]][model_i]
+
+  for (stat_i in seq_along(statistics)) {
+
+    p <- dat_sum %>%
+      filter(term %in% model) %>%
+      ggplot() +
+      geom_brain(
+        aes_string(fill = statistics[stat_i]),
+        atlas = atlas, position = position_brain(hemi + side ~ .)
+        ) +
+      scale_fill_viridis_c(
+        option = "magma", na.value = "grey",
+        breaks = scales::extended_breaks(4)
+        ) +
+      facet_grid(cols = vars(ttype_subset)) +
+      theme_surface +
+      theme(legend.position = c(2/3, 0.5)) +
+      labs(title = paste0(titles[stat_i], ": ", model), fill = NULL)
+
+    print(p)
+
+  }
+
+}
+
+```
+
+
+## Thresholded
+
+Three consecutive thresholds are used, each more liberal than the previous:
+
+- **p_FDR < 0.05**: parcels with mean model fit significantly greater than 0 following FDR correction over all parcels (separately per model and trialtype set)
+- **p_uncorr < 0.05**: parcels with mean model fit significantly greater than 0 (uncorrected)
+- **t_stat > 0**: parcels with mean model fit numerically greater than zero
+
+### Common scale
+
+```{r message = FALSE}
+
+dat_sum$is_in_thresh_fdr <- dat_sum$p_fdr < 0.05
+dat_sum$is_in_thresh_p <- dat_sum$p < 0.05
+dat_sum$is_in_thresh_sign <- dat_sum$t_stat > 0
+
+thresholds <- c("p_fdr < 0.05", "p_uncorr < 0.05", "t_stat > 0")
+thresholds_nms <- c("is_in_thresh_fdr", "is_in_thresh_p", "is_in_thresh_sign")
+
+for (thresh_i in seq_along(thresholds)) {
+
+  threshold_nm <- thresholds_nms[thresh_i]
+
+  for (stat_i in seq_along(statistics)) {
+
+    dat_sum$thresh <- as.numeric(ifelse(dat_sum[[threshold_nm]], dat_sum[[statistics[stat_i]]], NA))
+
+    p <- dat_sum %>%
+      ggplot() +
+      geom_brain(
+        aes(fill = thresh),
+        atlas = atlas, position = position_brain(side ~ hemi)
+        ) +
+      scale_fill_viridis_c(
+        option = "magma", na.value = "grey",
+        breaks = scales::extended_breaks(4)
+        ) +
+      facet_grid(rows = vars(term), cols = vars(ttype_subset)) +
+      theme_surface +
+      labs(title = paste0(titles[stat_i], ": thresholded at ", thresholds[thresh_i]), fill = NULL)
+
+    print(p)
+
+  }
+
+}
+
+```
+
+
+# Tables
+
+
+## Intersection: PC50 and bias
+
+Parcels that are FDR-significant within both PC50 and bias stimulus sets.
+
+
+### FDR corrected whole-cortex
+
+```{r, results = "asis"}
+
+sig_both <- dat_sum %>% 
+  filter(p_fdr < 0.05, ttype_subset %in% c("bias", "pc50")) %>% 
+  group_by(term, region) %>% 
+  summarize(is_sig_both = n() == 2) %>%
+  filter(is_sig_both)
+
+d <- enlist(c("target", "distractor", "incongruency"))
+for (model in names(d)) {
+
+  d[[model]] <- dat_sum %>%
+    ungroup %>%
+    filter(term == model, region %in% sig_both$region[sig_both$term == model]) %>%
+    select(region, m, t_stat, p) %>%
+    arrange(region, ttype_subset)
+
+}
+
+lapply(d, kable)
+
+```
+
+
+### FDR corrected within ROIs
+
+```{r, results = "asis"}
+
+dat_sum_rois <- dat_sum %>% filter(region %in% rois$region) %>% mutate(p_fdr = p.adjust(p, "fdr"))
+
+sig_both_rois <- dat_sum_rois %>% 
+  filter(p_fdr < 0.05, ttype_subset %in% c("bias", "pc50")) %>% 
+  group_by(term, region) %>% 
+  summarize(is_sig_both = n() == 2) %>%
+  filter(is_sig_both)
+
+d <- enlist(c("target", "distractor", "incongruency"))
+for (model in names(d)) {
+  
+  d[[model]] <- dat_sum_rois %>% 
+    ungroup %>%
+    filter(term == model, region %in% sig_both$region[sig_both$term == model]) %>%
+    select(region, ttype_subset, m, t_stat, p, p_fdr) %>%
+    arrange(region, ttype_subset)
+}
+
+lapply(d, kable)
+
+```
+
+
+### P<0.05 uncorrected within ROIs
+
+```{r, results = "asis"}
+
+dat_sum_rois <- dat_sum %>% filter(region %in% rois$region) %>% mutate(p_fdr = p.adjust(p, "fdr"))
+
+sig_both_rois_uncorr <- dat_sum %>% 
+  filter(region %in% rois$region, p < 0.05, ttype_subset %in% c("bias", "pc50")) %>% 
+  group_by(term, region) %>% 
+  summarize(is_sig_both = n() == 2) %>%
+  filter(is_sig_both)
+
+d <- enlist(c("target", "distractor", "incongruency"))
+for (model in names(d)) {
+  
+  d[[model]] <- dat_sum_rois %>% 
+    ungroup %>%
+    filter(term == model, region %in% sig_both_rois_uncorr$region[sig_both_rois_uncorr$term == model]) %>%
+    select(region, ttype_subset, m, t_stat, p, p_fdr) %>%
+    arrange(region, ttype_subset)
+}
+
+lapply(d, kable)
+
+```
+
+
+
+# Bar plots
+
+```{r, message = FALSE}
+## prep for plotting:
+
+dat_barplots <- dat %>% 
+  mutate(
+    term = factor(term, levels = c("target", "incongruency", "distractor")),
+    region_nice = gsub("17Networks_", "", region)
+    ) %>%
+  filter(term %in% c("target", "distractor", "incongruency"))
+
+dat_barplots <- dat_barplots %>%
+  pivot_wider(names_from = "ttype_subset", values_from = "b") %>%
+  mutate(b = pc50 - bias, ttype_subset = "pc50 - bias") %>%
+  select(-pc50, -bias) %>%
+  rbind(dat_barplots)
+
+```
+
+
+## ROIs
+
+
+```{r, message = FALSE}
+
+atlas$data %>%
+  ggplot() +
+    geom_brain(
+      aes(fill = ifelse(region %in% rois$region, region, NA)),
+      atlas = atlas, position = position_brain(side ~ hemi)
+      ) +
+  labs(title = paste0("ROIs: ", roiset), fill = NULL) +
+  theme_surface
+
+
+dat_barplots %>%
+  
+  right_join(rois, by = "region") %>%
+  
+  ggplot(aes(region_nice, b, fill = term, color = term)) +
+  geom_hline(yintercept = 0, color = "grey70") +
+  stat_summary(
+    fun.data = mean_cl_boot, geom = "errorbar", width = 0, size = 2/3, position = position_dodge(width = 0.5),
+    color = "grey50"
+    ) +
+  stat_summary(fun = mean, geom = "col", width = 1/3, position = position_dodge(width = 0.5)) +
+  
+  scale_color_brewer(type = "qual", palette = 2) +
+  scale_fill_brewer(type = "qual", palette = 2) +
+  
+  facet_grid(cols = vars(ttype_subset), rows = vars(location), scales = "free_y") +
+  theme(
+    #axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), 
+    legend.position = "none", axis.title.y = element_blank()
+    ) +
+    labs(y = "mean coefficient", title = paste0("ROIs: ", roiset)) +
+  coord_flip()
+
+```
+

@@ -2,13 +2,10 @@ library(here)
 library(rmarkdown)
 library(mfutils)
 
-src_dir <- "group_analyses/RR_2022_01_03"
+src_dir <- "group_analyses/MC1_2022_01_09"
 roisets <- c("glasser2016_parcel", "schaefer2018_17_200_parcel")
-#ttype_subsets <- c("bias", "pc50")
 ttype_subsets <- c("all")
-#measures <- c("cveuc", "crcor")
 measures <- c("crcor")
-#prewhs <- c("none", "obsall", "obsallave")
 prewhs <- "none"
 
 ps <- expand.grid(

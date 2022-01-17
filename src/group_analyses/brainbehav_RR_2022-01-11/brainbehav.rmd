@@ -1,0 +1,185 @@
+---
+title: "MI Wave 1 analyses: brain--behavior correlations"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 3
+        toc_float: true
+        number_sections: true
+        code_folding: hide
+params:
+    prewh: "none"
+    measure: "crcor"
+    roiset: "glasser2016_parcel"
+---
+
+# intro
+
+
+```{r setup, results = FALSE, message = FALSE, warning = FALSE}
+
+## libraries ----
+
+library(here)
+library(data.table)
+source(here("src", "stroop-rsa-pc.R"))
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(mfutils)
+library(ggseg)
+library(ggsegExtra)
+library(ggsegSchaefer)
+library(ggsegGlasser)
+
+## settings, params ----
+
+opts_chunk$set(echo = TRUE, out.width = "100%")
+theme_set(theme_bw(base_size = 10))
+
+if (exists("params")) {
+  ttype_subset <- params$ttype_subset
+  prewh <- params$prewh
+  measure <- params$measure
+  roiset <- params$roiset
+} else {
+  prewh <- "none"
+  measure <- "crcor"
+  roiset <- "schaefer2018_17_200_parcel"
+}
+
+theme_surface <- list(
+  theme(
+    axis.text = element_blank(), panel.grid = element_blank(), panel.border = element_blank(),
+    axis.ticks = element_blank(), legend.position = c(0.5, 0.5), legend.title = element_text(size = 5), 
+    legend.background = element_blank(), legend.text = element_text(size = 5), legend.direction = "horizontal",
+    legend.key.height = unit(1/5, "cm"), legend.key.width = unit(1/4, "cm")
+  )
+)
+
+
+## constants ----
+
+wd <- here()
+subjlists <- "mc1"
+seswaves <- c("baseline_wave1")
+glmname <- "lsall_1rpm"
+sessions <- c("proactive")
+statistics <- c("m", "t_stat")
+titles <- c("mean coefficient", "t statistic")
+
+## data ----
+
+## read regression weights:
+
+dat <- lapply(
+  c("pc50", "bias"),
+  function(ttype_subset) {
+    fname <- construct_filename_weights(
+        measure = measure, subjlist = subjlists, glmname = glmname, 
+        ttype_subset = ttype_subset, roiset = roiset, prewh = prewh, suffix = paste0("__seswave-", seswaves)
+        )
+    d <- fread(fname)
+    d$ttype_subset <- ttype_subset
+    d
+  }
+)
+dat <- rbindlist(dat)
+
+
+## add subject set information:
+
+subjs <- c(
+  fread(here("out", "subjlist_jneurosci_primary.txt"))[[1]],
+  fread(here("out", "subjlist_jneurosci_replication_primary.txt"))[[1]]
+)
+
+dat <- dat %>% filter(subject %in% subjs)
+beh <- fread(here("out", "blups_mi1.txt")) %>% select(subject = subj, stroop_pc50, stroop_bias)
+dat <- dat %>% left_join(beh, by = "subject")
+
+
+dat <- dat %>% rename(region = roi)
+
+if (roiset == "schaefer2018_17_200_parcel") {
+  
+  atlas <- schaefer17_200
+  k <- schaefer2018_17_200_fsaverage5$key %>% select(region = parcel, network)
+  
+  rois <- data.frame(
+    region = c(
+    "17Networks_LH_ContA_PFClv_1",
+    "17Networks_LH_ContA_PFCl_1",
+    "17Networks_LH_ContA_PFCl_2",
+    "17Networks_LH_ContA_PFCl_3",
+    "17Networks_RH_ContA_PFCl_1",
+    "17Networks_RH_ContA_PFCl_2",
+    "17Networks_LH_SalVentAttnB_PFCmp_1",
+    "17Networks_RH_SalVentAttnB_PFCmp_1",
+    "17Networks_LH_SalVentAttnA_FrMed_1",
+    "17Networks_RH_SalVentAttnA_FrMed_1"
+    ),
+    location = c(rep("lateral", 6), rep("medial", 4))
+  )
+
+} else if (roiset == "glasser2016_parcel") {
+  
+  atlas <- glasser
+  k <- glasser2016_fsaverage5$key %>% select(region = parcel, network)
+  
+  dat <- dat %>% filter(!region %in% "L_10pp")  ## not in glasser ggseg atlas?
+  ## create region column in ggseg atlas that matches data:
+  hemi <- ifelse(atlas$data$hemi == "left", "L_", "R_")
+  atlas$data$region <- ifelse(is.na(atlas$data$region), NA, paste0(hemi, atlas$data$region))
+  
+  rois <- data.frame(
+    region = combo_paste(c("L_", "R_"), c("SCEF", "8BM",  "p32pr", "a32pr", "p9-46v", "i6-8", "8Av", "8C")),
+    location = c(rep("medial", 8), rep("lateral", 8))
+  )
+  
+}
+
+## add network information:
+#atlas$data <- left_join(atlas$data, k, by = "region")
+#dat <- left_join(dat, k, by = "region")
+
+
+```
+
+
+
+```{r}
+dat$stroop <- ifelse(dat$ttype_subset == "pc50", dat$stroop_pc50, dat$stroop_bias)
+
+
+dat_sum <- 
+  dat %>%
+  filter(term %in% c("distractor", "incongruency", "target")) %>%
+  pivot_wider(names_from = term, values_from = "b") %>%
+  split(paste0(.$region, "__", .$ttype_subset)) %>%
+  purrr::map(~ lm(stroop ~ target + distractor + incongruency, .x)) %>% 
+  purrr::map(
+    ~ tidy_model(coef(summary(.x)), c("intercept", "target", "distractor", "incongruency"), c("b", "se", "tstat", "p"))
+    ) %>% 
+  rbindlist(idcol = "region__ttype_subset") %>%
+  separate(region__ttype_subset, into = c("region", "ttype_subset"), sep = "__")
+
+dat_sum %>% 
+  filter(term %in% c("distractor", "incongruency", "target")) %>%
+  ungroup %>%
+  mutate(tstat = ifelse(tstat > 0, tstat, NA)) %>%
+  ggplot() +
+    geom_brain(
+      aes(fill = tstat),
+      atlas = atlas, position = position_brain(side ~ hemi)
+      ) +
+    scale_fill_viridis_c(
+      option = "magma", na.value = "grey",
+      breaks = scales::extended_breaks(4)
+      ) +
+    facet_grid(cols = vars(ttype_subset), rows = vars(term)) +
+    theme_surface
+
+```
+
