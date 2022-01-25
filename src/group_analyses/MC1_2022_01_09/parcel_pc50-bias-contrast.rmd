@@ -433,7 +433,6 @@ atlas$data %>%
   labs(title = paste0("ROIs: ", roiset), fill = NULL) +
   theme_surface
 
-
 dat_barplots %>%
   
   right_join(rois, by = "region") %>%
