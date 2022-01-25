@@ -5,7 +5,7 @@ library(dplyr)
 source(here("src", "stroop-rsa-pc.R"))
 sample_cotwins <- function(x) {
   set.seed(0)
-  twinpairs <- unique(x$twinpair[duplicated(x$twinpair)])
+  twinpairs <- unique(x$twinpair[duplicated(x$twinpair) & !is.na(x$twinpair)])
   x <- x %>% filter(twinpair %in% twinpairs)  ## only twins in sample
   x %>%
     group_by(twinpair) %>%
@@ -14,6 +14,16 @@ sample_cotwins <- function(x) {
 }
 
 s <- fread(here("out", "subjlist.csv"))
+
+## wave 1 list: baseline, proactive, reactive
+
+subjs_wave1 <- names(which(table(s[wave == "wave1", subj]) == 3))
+s_wave1 <- s[wave == "wave1" & subj %in% subjs_wave1]
+wave1_cotwins_exclude <- sample_cotwins(s_wave1)
+s_wave1_unrel <- unique(s_wave1[!subj %in% wave1_cotwins_exclude, "subj"])
+fwrite(s_wave1_unrel, here("out", "subjlist_wave1_unrel.txt"), col.names = FALSE)
+fwrite(unique(s_wave1[, "subj"]), here("out", "subjlist_wave1.txt"), col.names = FALSE)
+
 
 ## development list: reactive test--retest
 
@@ -80,4 +90,4 @@ fwrite(as.data.frame(replication_cotwins), here("out", "subjlist_jneurosci_repli
 ## MC1 list
 s_mc1 <- s[session == "baseline" & wave == "wave1"]
 mc1_cotwins_exclude <- sample_cotwins(s_mc1)
-fwrite(s_mc1[!subj %in% mc1_cotwins_exclude, "subj"], here("out", "subjlist_mc1_unrel.txt"), col.names = FALSE)
+fwrite(s_mc1[!subj %in% mc1_cotwins_exclude, "subj"], here("out", "subjlist_mc1_unrel1.txt"), col.names = FALSE)
