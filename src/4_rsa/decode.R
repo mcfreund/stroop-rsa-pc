@@ -68,19 +68,6 @@ roiset <- paste0(atlas_name, "_", roi_col)
 
 ## script-specific functions
 
-get_variable <- function(x, variable) {
-    if (variable == "target") {
-        res <- gsub("[[:upper:]]", "", x)
-    } else if (variable == "distractor") {
-        res <- gsub("[[:lower:]]", "", x)
-    } else if (variable == "congruency") {
-        is_congr <- gsub("[[:upper:]]", "", x) == tolower(gsub("[[:lower:]]", "", x))
-        res <- ifelse(is_congr, "congr", "incon")
-    } else res <- "variable must be target, distractor, or congruency"
-
-    res
-
-}
 
 summarize_predictions <- function(fit, newdata, labs, type = "contrast") {
     
@@ -121,16 +108,23 @@ summarize_predictions <- function(fit, newdata, labs, type = "contrast") {
 
 
 
-## execute ----
+## run ----
+
 
 input <- construct_filenames_h5(
     prefix = "coefs", subjects = subjects, waves = waves, sessions = sessions, rois = rois, runs = runs, 
     glmname = glmname, prewh = "none"
 )
+## remove subjects with missing data:
+input[, file_exists := file.exists(file_name)]
+subjs_missing <- input[file_exists == FALSE, unique(subj)]
+print(noquote(paste0("removing subjects due to missing data: ", subjs_missing)))
+input <- input[!subj %in% subjs_missing]
 ## make larger chunks for each core by redefining looping variable (have each core loop over ROIs):
 ## each row of input_subset defines the location of data for a single subject*wave*session*roi (both runs):
 input[, g := subj]  ## run subjects in parallel (ROI in serial)
 g <- unique(input$g)
+
 
 
 time_beg <- Sys.time()
@@ -304,9 +298,9 @@ out <- foreach(ii = seq_along(g)) %dopar% {
 }
 stopCluster(cl)
 time_end <- Sys.time()
-time_end - time_beg
+print(time_end - time_beg)
 
-fname <- paste0(decoder, "__", atlas_name, "__", roi_col, "__nresamp", n_resamp, ".txt")
+fname <- paste0(decoder, "__", atlas_name, "__", roi_col, "__nresamp", n_resamples, "__", glmname, ".txt")
 fwrite(out, here("out", "res_decoding", fname))
 
 

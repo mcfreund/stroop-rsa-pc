@@ -121,6 +121,20 @@ core32 <- c(
 
 
 
+get_variable <- function(x, variable) {
+    if (variable == "target") {
+        res <- gsub("[[:upper:]]", "", x)
+    } else if (variable == "distractor") {
+        res <- gsub("[[:lower:]]", "", x)
+    } else if (variable == "congruency") {
+        is_congr <- gsub("[[:upper:]]", "", x) == tolower(gsub("[[:lower:]]", "", x))
+        res <- ifelse(is_congr, "congr", "incon")
+    } else res <- "variable must be target, distractor, or congruency"
+
+    res
+
+}
+
 ## math/stats functions
 
 .cvdist <- function(x1, x2, m) {
