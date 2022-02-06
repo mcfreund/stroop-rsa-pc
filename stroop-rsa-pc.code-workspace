@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../GLMsingle"
+		}
+	],
+	"settings": {
+		"r.plot.useHttpgd": true
+	}
+}
