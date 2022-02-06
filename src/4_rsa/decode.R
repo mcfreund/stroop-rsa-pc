@@ -23,7 +23,7 @@ library(e1071)
 task <- "Stroop"
 variables <- c("target", "distractor", "congruency")
 train_session <- "baseline"
-test_sessions <- c("proactive")
+test_sessions <- c("proactive", "reactive")
 trialcounts <- fread(here("in", "trialcounts.csv"))
 stimsets <- list(
     bias = trialcounts[pc == "bias", unique(stimulus)],
@@ -41,16 +41,17 @@ stimuli_to3 <- c("blueBLUE_run2", "purplePURPLE_run2", "redRED_run1", "whiteWHIT
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
-    atlas_name <- "glasser2016"
+    atlas_name <- "schaefer2018_17_200"
+    #atlas_name <- "glasser2016"
     space <- "fsaverage5"
     roi_col <- "parcel"
-    subjlist <- "wave1"
+    subjlist <- "wave1_unrel"
     subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
-    n_cores <- 26
+    n_cores <- 24
     n_resamples <- 1E2
     decoder <- "svm"
-    test_session <- "proactive"
+    # test_session <- "proactive"
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -115,7 +116,7 @@ input <- construct_filenames_h5(
     prefix = "coefs", subjects = subjects, waves = waves, sessions = sessions, rois = rois, runs = runs, 
     glmname = glmname, prewh = "none"
 )
-## remove subjects with missing data:
+## identify and remove subjects with missing data:
 input[, file_exists := file.exists(file_name)]
 subjs_missing <- input[file_exists == FALSE, unique(subj)]
 print(noquote(paste0("removing subjects due to missing data: ", subjs_missing)))
@@ -126,11 +127,10 @@ input[, g := subj]  ## run subjects in parallel (ROI in serial)
 g <- unique(input$g)
 
 
-
 time_beg <- Sys.time()
 cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
-out <- foreach(ii = seq_along(g)) %dopar% {
+out <- foreach(ii = seq_along(g), .verbose = TRUE, .inorder = FALSE) %dopar% {
 
     id <- g[ii]
     inputs <- input[g == id]
@@ -276,8 +276,9 @@ out <- foreach(ii = seq_along(g)) %dopar% {
                         } else if (decoder == "svm") {
                             ## function: fit, newdata, y_test
                             distn <- summarize_predictions(fit, t(testdata), y_test, "contrast")
-                            logit <- summarize_predictions(fit, t(testdata), y_test, "probability")
-                            preds_i[[i]] <- cbind(distn, logit)
+                            #logit <- summarize_predictions(fit, t(testdata), y_test, "probability")
+                            #preds_i[[i]] <- cbind(distn, logit)
+                            preds_i[[i]] <- distn
                         }
                         
                     }  ## end resamples
@@ -291,22 +292,26 @@ out <- foreach(ii = seq_along(g)) %dopar% {
         preds <- preds[lengths(preds) > 0]
         res[[roi_i]] <- rbindlist(lapply(preds, as.data.table), id = "session_variable_stimset")
 
+        #print(roi_i)
+
     }  ## end ROI loop
 
-    rbindlist(res, id = "roi")
+    res_dt <- rbindlist(res, id = "roi")
+    # fname <- paste0(decoder, "__", atlas_name, "__", roi_col, "__nresamp", n_resamples, "__", glmname, "_", id, ".txt")
+    # fwrite(res_dt, here("out", "res_decoding", fname))
+    res_dt
 
 }
 stopCluster(cl)
 time_end <- Sys.time()
 print(time_end - time_beg)
 
+outd <- rbindlist(out)
+outd <- separate(outd, "roi", c("subj", "roi"), sep = "__")
+outd <- separate(outd, "session_variable_stimset", c("session", "variable", "stimset"), sep = "_")
+outd <- rename(outd, distn = V1)
 fname <- paste0(decoder, "__", atlas_name, "__", roi_col, "__nresamp", n_resamples, "__", glmname, ".txt")
-fwrite(out, here("out", "res_decoding", fname))
-
-
-
-
-
+fwrite(outd, here("out", "res_decoding", fname))
 
 
 ## checking resampling code ----

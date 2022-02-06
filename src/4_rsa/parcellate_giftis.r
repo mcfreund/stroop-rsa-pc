@@ -42,15 +42,16 @@ task <- "Stroop"
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
     atlas_name <- "glasser2016"
-    roi_col <- "parcel"
+    roi_col <- "network"
     space <- "fsaverage5"
-    subjlist <- "mi1"
-    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]][1:5]
-    sessions <- c("proactive")
+    subjlist <- "wave1_unrel"
+    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
+    sessions <- "reactive"#c("baseline", "proactive", "reactive")
     waves <- c("wave1")
-    glm_i <- 1
-    n_cores <- 10
+    glm_i <- 94
+    n_cores <- 20
     overwrite <- TRUE
+    delete_files <- TRUE
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -110,14 +111,17 @@ res <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
         parcs <- parcs[!is_extant]
     }
 
-    nms <- Map(
-        function(x, y, ...) write_dset(mat = x, roi = y, ...), 
-        parcs, names(parcs),
-        dset_prefix = "coefs",
-        subject = sub, wave = wav, session = ses, run = run, 
-        roiset = roiset, glmname = glmname, prewh = "none",
-        write_colnames = TRUE
-        )
+    nms <- enlist(names(parcs))
+    for (i in seq_along(parcs)) {
+        nms[[i]] <- write_dset(
+            mat = parcs[[i]], roi = names(parcs)[i], 
+            dset_prefix = "coefs",
+            subject = sub, wave = wav, session = ses, run = run, 
+            roiset = roiset, glmname = glmname, prewh = "none",
+            write_colnames = TRUE, delete_file = delete_files
+            )
+        #print(i)
+    }
 
     nms
 
