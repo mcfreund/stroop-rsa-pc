@@ -427,10 +427,12 @@ write_dset <- function(
     mat, dset_prefix, subject, wave, session, run, roiset, roi, glmname, prewh,
     base_dir = here::here("out", "parcellated", ".d"),
     write_colnames = FALSE,
-    write_rownames = FALSE
+    write_rownames = FALSE,
+    delete_file = FALSE
     ) {
     file_name <- construct_filename_h5(subject, wave, session, run, roiset, roi, base_dir)
     dset_name <- construct_dsetname_h5(dset_prefix, subject, wave, session, run, roiset, roi, glmname, prewh, base_dir)
+    if (delete_file) unlink(file_name)
     rhdf5::h5write(mat, file = file_name, name = dset_name)
     if (write_rownames) .write_dset_dimnames(mat, file_name, dset_name, 1)
     if (write_colnames) .write_dset_dimnames(mat, file_name, dset_name, 2)
