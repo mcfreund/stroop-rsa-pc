@@ -41,16 +41,17 @@ stimuli_to3 <- c("blueBLUE_run2", "purplePURPLE_run2", "redRED_run1", "whiteWHIT
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
-    atlas_name <- "schaefer2018_17_200"
-    #atlas_name <- "glasser2016"
+    #atlas_name <- "schaefer2018_17_200"
+    atlas_name <- "glasser2016"
     space <- "fsaverage5"
-    roi_col <- "parcel"
+    roi_col <- "network"
     subjlist <- "wave1_unrel"
     subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
     n_cores <- 24
     n_resamples <- 1E2
     decoder <- "svm"
+    wantscale <- TRUE
     # test_session <- "proactive"
 } else {
     source(here("src", "parse_args.r"))
@@ -223,6 +224,12 @@ out <- foreach(ii = seq_along(g), .verbose = TRUE, .inorder = FALSE) %dopar% {
             sd_bar <- mean(vapply(split(trial_sd, trial_congruency), mean, numeric(1)))            
             d[[test_session]] <- b_test / sd_bar
         }
+        ## z-score each trial?
+        if (wantscale) {
+            d <- lapply(d, scale)
+            b <- lapply(b, scale)
+        }
+
 
 
         ## fit models and get predictions
@@ -310,7 +317,8 @@ outd <- rbindlist(out)
 outd <- separate(outd, "roi", c("subj", "roi"), sep = "__")
 outd <- separate(outd, "session_variable_stimset", c("session", "variable", "stimset"), sep = "_")
 outd <- rename(outd, distn = V1)
-fname <- paste0(decoder, "__", atlas_name, "__", roi_col, "__nresamp", n_resamples, "__", glmname, ".txt")
+scalesuff <- switch(wantscale + 1, "", "__scaled")
+fname <- paste0(decoder, "__", atlas_name, "__", roi_col, "__nresamp", n_resamples, "__", glmname, scalesuff, ".txt")
 fwrite(outd, here("out", "res_decoding", fname))
 
 
