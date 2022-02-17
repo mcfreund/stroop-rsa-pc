@@ -8,6 +8,8 @@ out/parcellated
 out/res/rdm*
 out/res/*Schaefer2018*
 out/sim
+out/res_decoding
+out/behav
 
 src/scratch
 misc/profile.html
