@@ -33,21 +33,21 @@ source(here("src", "stroop-rsa-pc.R"))
 task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
-    glmname <- "lsall_1rpm"
+    glmname <- "glmsingle_wave1_target_hrf"
     atlas_name <- "glasser2016"
     space <- "fsaverage5"
     roi_col <- "parcel"
-    subjlist <- "mi1"
+    subjlist <- "wave1_unrel_pilot"
     subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
-    sessions <- "proactive"
+    sessions <- "baseline"
     measure <- "crcor"  ## crcor
     prewh <- "none"
-    ttype_subset <- "all"
-    ii <- 596
+    ttype_subset <- "bias"
+    ii <- 1
     n_cores <- 28
     run_i <- 1
-    n_resamples <- 1E4
+    n_resamples <- 1E2
     overwrite <- TRUE
 } else {
     source(here("src", "parse_args.r"))
@@ -155,6 +155,7 @@ res <- foreach(ii = seq_along(l), .combine = c) %dopar% {
         }
         ## subset vertices:
         is_good_vert <- !Reduce("|", is_bad_vert)
+        is_good_vert[is.na(is_good_vert)] <- FALSE  ## for NA verts
         if (sum(is_good_vert) == 0) {
             stop(c("no good verts: ", paste0(input_val[1, 1:5], sep = " ")))
         } else {

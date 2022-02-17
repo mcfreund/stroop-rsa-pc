@@ -36,21 +36,22 @@ source(here("src", "stroop-rsa-pc.R"))
 task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
-    glmname <- "lsall_1rpm"
+    glmname <- "glmsingle_wave1_target_hrf"
     prewh <- "none"
     atlas_name <- "glasser2016"
     roi_col <- "parcel"
     space <- "fsaverage5"
-    measure <- "cveuc"
-    subjlist <- "mi1"
+    measure <- "crcor"
+    subjlist <- "wave1_unrel_pilot"
     subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
-    sessions <- "proactive"
+    sessions <- "baseline"
     ttype_subset <- "bias"
     subject = subjects[1]
     wave = waves[1]
     subject_i = 1
     wave_i = 1
+    suffix <- "__seswave-baseline_wave1"
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -59,6 +60,7 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
 stopifnot(sessions %in% c("baseline", "proactive", "reactive"))
 stopifnot(measure %in% c("crcor", "cveuc"))
 if (!exists("suffix")) suffix <- ""
+subjects <- as.character(subjects)
 
 atlas <- load_atlas(atlas_name, space)
 rois <- unique(atlas$key[[roi_col]])
