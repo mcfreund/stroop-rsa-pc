@@ -44,7 +44,7 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
     #atlas_name <- "schaefer2018_17_200"
     atlas_name <- "glasser2016"
     space <- "fsaverage5"
-    roi_col <- "network"
+    roi_col <- "parcel"
     subjlist <- "wave1_unrel"
     subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
@@ -229,8 +229,6 @@ out <- foreach(ii = seq_along(g), .verbose = TRUE, .inorder = FALSE) %dopar% {
             d <- lapply(d, scale)
             b <- lapply(b, scale)
         }
-
-
 
         ## fit models and get predictions
 

@@ -1,0 +1,264 @@
+---
+title: "Exploring impact of GLMsingle on RSA model fits"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 3
+        toc_float: true
+        number_sections: true
+        code_folding: hide
+params:
+    prewh: "none"
+    measure: "crcor"
+    roiset: "glasser2016_parcel"
+---
+
+# intro
+
+```{r setup, results = FALSE, message = FALSE, warning = FALSE}
+
+## libraries ----
+
+library(here)
+library(data.table)
+source(here("src", "stroop-rsa-pc.R"))
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(mfutils)
+
+## settings, params ----
+
+opts_chunk$set(echo = TRUE, out.width = "100%")
+theme_set(theme_bw(base_size = 10))
+point_size <- 0.5
+point_size_big <- 1.5
+
+measure <- "crcor"
+seswaves <- c("baseline_wave1")
+glmnames <- list(
+    hrf = c("glmsingle_wave1_target_hrf", "glmsingle_wave1_distractor_hrf", "glmsingle_wave1_congruency_hrf"),
+    rr = c("glmsingle_wave1_target_hrf_rr", "glmsingle_wave1_distractor_hrf_rr", "glmsingle_wave1_congruency_hrf_rr")
+    )
+sessions <- c("baseline")
+subjlist <- "wave1_unrel_pilot"
+roiset <- "glasser2016_parcel"
+prewh <- "none"
+ttype_subset <- "bias"
+
+rois <- data.frame(
+    region = combo_paste(c("L_", "R_"), c("SCEF", "8BM",  "p32pr", "a32pr", "p9-46v", "i6-8", "8Av", "8C")),
+    location = c(rep("medial", 8), rep("lateral", 8))
+)
+
+
+## data ----
+
+## read regression weights:
+
+dat <- lapply(
+  unlist(glmnames),
+  function(glmname) {
+    fname <- construct_filename_weights(
+        measure = measure, subjlist = subjlist, glmname = glmname, 
+        ttype_subset = ttype_subset, roiset = roiset, prewh = prewh, suffix = paste0("__seswave-", seswaves)
+        )
+    d <- fread(fname)
+    d$ttype_subset <- ttype_subset
+    d
+  }
+)
+names(dat) <- unlist(glmnames)
+dat <- rbindlist(dat, idcol = "glmname")
+dat$subject <- as.character(dat$subject)
+
+
+dat_orig <- lapply(
+  ttype_subset,
+  function(ttype_subset) {
+    fname <- construct_filename_weights(
+        measure = measure, subjlist = "mc1", glmname = "lsall_1rpm", 
+        ttype_subset = ttype_subset, roiset = roiset, prewh = prewh, suffix = paste0("__seswave-", seswaves)
+        )
+    d <- fread(fname)
+    d$ttype_subset <- ttype_subset
+    d
+  }
+)
+dat_orig <- rbindlist(dat_orig)[subject %in% unique(dat$subject)]
+dat_orig$glmname <- "lsall_1rpm"
+dat_all <- rbind(dat_orig, dat)
+dat_w <- dat_all %>% pivot_wider(names_from = "glmname", values_from = "b")
+
+
+```
+
+# HRF
+
+**bias, pc50**
+HRF model is equivalent across different types of cross-validation (cval only applies to RR).
+
+```{r}
+
+dat_w %>%
+    ggplot(aes(glmsingle_wave1_target_hrf, glmsingle_wave1_distractor_hrf)) +
+    geom_point(size = point_size) +
+    geom_abline() +
+    facet_grid(cols = vars(term))
+
+dat_w %>%
+    ggplot(aes(glmsingle_wave1_target_hrf, glmsingle_wave1_congruency_hrf)) +
+    geom_point(size = point_size) +
+    geom_abline() +
+    facet_grid(cols = vars(term))
+
+```
+
+## HRF versus LS-all
+
+**bias**
+Consistent (across-subjects) increase in incongruency model fits.
+Smaller but perhaps also consistent increase in distractor model fits.
+Potential decrease in target model fits.
+
+**pc50**
+If anything, consistent decrease in incongruency model fits.
+Perhaps not surprising due to HRF model being selected on basis of overall $R^2$ (i.e., most variance explained by bias items).
+
+```{r}
+
+dat_w %>%
+    filter(term %in% c("target", "distractor", "incongruency")) %>%
+    ggplot(aes_string("glmsingle_wave1_target_hrf", "lsall_1rpm")) +
+    geom_point(size = point_size) +
+    geom_abline() +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    facet_grid(rows = vars(subject), cols = vars(term)) +
+    labs(title = paste0("indiv: hrf vs lsall"))
+
+dat_all %>%
+    group_by(wave, session, term, roi, ttype_subset, glmname) %>%
+    summarize(b = mean(b)) %>%
+    filter(term %in% c("target", "distractor", "incongruency"), glmname %in% c("glmsingle_wave1_target_hrf", "lsall_1rpm")) %>%
+    pivot_wider(names_from = "glmname", values_from = "b") %>%
+    ggplot(aes_string("glmsingle_wave1_target_hrf", "lsall_1rpm")) +
+    geom_abline() +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_point(size = point_size_big, aes(alpha = ifelse(roi %in% rois$region, 1, 0.2))) +
+    facet_grid(cols = vars(term)) +
+    scale_alpha_identity() +
+    labs(title = paste0("group: hrf vs lsall"))
+
+```
+
+
+# HRF_RR
+
+## different cross-validation schemes in HRF_RR
+
+**bias, pc50**
+Surprising (to me) equivalence across different cross-validation schemes.
+
+```{r}
+
+dat_w %>%
+    ggplot(aes(glmsingle_wave1_target_hrf_rr, glmsingle_wave1_distractor_hrf_rr)) +
+    geom_point(size = point_size) +
+    geom_abline() +
+    facet_grid(cols = vars(term))
+
+dat_w %>%
+    ggplot(aes(glmsingle_wave1_target_hrf_rr, glmsingle_wave1_congruency_hrf_rr)) +
+    geom_point(size = point_size) +
+    geom_abline() +
+    facet_grid(cols = vars(term))
+
+```
+
+
+## HRF versus HRF_RR
+
+**bias**
+Consistent increase for incongruency model.
+Unclear impact on target and distractor.
+
+**pc50**
+
+
+```{r}
+
+mods2plot <- glmnames$hrf[1]  ## since all similar / identcal
+
+for (glmname in mods2plot) {
+
+    p <- dat_w %>%
+        filter(term %in% c("target", "distractor", "incongruency")) %>%
+        ggplot(aes_string(paste0(glmname, "_rr"), glmname)) +
+        geom_point(size = point_size) +
+        geom_abline() +
+        geom_hline(yintercept = 0) +
+        geom_vline(xintercept = 0) +
+        facet_grid(rows = vars(subject), cols = vars(term)) +
+        labs(title = paste0("indiv: ", glmname, " vs *_RR"))
+    
+    print(p)
+
+    p <- dat_all %>%
+        group_by(wave, session, term, roi, ttype_subset, glmname) %>%
+        summarize(b = mean(b)) %>%
+        filter(term %in% c("target", "distractor", "incongruency"), glmname %in% c(glmname, paste0(glmname, "_rr"))) %>%
+        pivot_wider(names_from = "glmname", values_from = "b") %>%
+        ggplot(aes_string(paste0(glmname, "_rr"), glmname)) +
+        geom_abline() +
+        geom_hline(yintercept = 0) +
+        geom_vline(xintercept = 0) +
+        geom_point(size = point_size_big, aes(alpha = ifelse(roi %in% rois$region, 1, 0.2))) +
+        facet_grid(cols = vars(term)) +
+        scale_alpha_identity() +
+        labs(title = paste0("group: ", glmname, " vs *_RR"))
+
+    print(p)
+
+}
+
+```
+
+
+## HRF versus LS-all
+
+**bias**
+Consistent increase, again largest for incongruency.
+
+**pc50**
+Unclear impact (RR perhaps slightly lessens detriment of FITHRF).
+
+```{r}
+
+dat_w %>%
+    filter(term %in% c("target", "distractor", "incongruency")) %>%
+    ggplot(aes(glmsingle_wave1_target_hrf_rr, lsall_1rpm)) +
+    geom_point(size = point_size) +
+    geom_abline() +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    facet_grid(rows = vars(subject), cols = vars(term)) +
+    labs(title = paste0("indiv: *_RR vs lsall"))
+
+dat_all %>%
+    group_by(wave, session, term, roi, ttype_subset, glmname) %>%
+    summarize(b = mean(b)) %>%
+    filter(term %in% c("target", "distractor", "incongruency"), glmname %in% c(glmname, paste0(glmname, "_rr"))) %>%
+    pivot_wider(names_from = "glmname", values_from = "b") %>%
+    ggplot(aes(glmsingle_wave1_target_hrf_rr, lsall_1rpm)) +
+    geom_abline() +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_point(size = point_size_big, aes(alpha = ifelse(roi %in% rois$region, 1, 0.2))) +
+    facet_grid(cols = vars(term)) +
+    scale_alpha_identity() +
+    labs(title = paste0("group: *_RR vs lsall"))
+
+```
