@@ -30,7 +30,7 @@ source(here("src", "stroop-rsa-pc.R"))
 
 run_model <- function(expr, path, reuse = TRUE) {
   ## https://github.com/paul-buerkner/brms/issues/472
-  path <- paste0(path, ".Rds")
+  path <- paste0(path, ".RDS")
   if (reuse) {
     fit <- suppressWarnings(try(readRDS(path), silent = TRUE))
   }
@@ -94,17 +94,23 @@ ols <- drt %>%
     summarize(rt = mean(rt)) %>%
     pivot_wider(subj, names_from = c("trial_type"), values_from = "rt") %>%
     transmute(stroop = incon - congr)
-#fwrite(ols, here("out", "blups_mi1.txt"))
 ```
 
 
-## Gaussian models
+## hierarchical models
+
+```{r}
+f_subj_stroop <- formula(rt ~ trial_type * pc + (trial_type | subj))
+```
+
+### Gaussian
 
 ```{r, cache = TRUE}
 
-f_subj_stroop <- formula(rt ~ trial_type * pc + (trial_type | subj))
-  
-m1_ebm_gauss <- lmer(f_subj_stroop, data = drt)
+m1_ebm_gauss <- run_model(
+  expr = lmer(f_subj_stroop, data = drt),
+  path = here("out", "behav", "m1_ebm_gauss_het")
+)
 
 m1_ebm_gauss_het <- run_model(
   expr = lme(
@@ -131,14 +137,106 @@ m1_hbm_gauss_het <- brm(
   brmsformula(f_subj_stroop, sigma ~ (1 | subj)), 
   data = drt, 
   cores = 4,
-  control = list(adapt_delta = 0.99),
-  iter = 4000,
-  file = here("out", "behav", "m1_hbm_gauss_het")
+  control = list(adapt_delta = 0.99, max_treedepth = 15),
+  iter = 8000,
+  file = here("out", "behav", "m1_hbm_gauss_het1")
   )
+
+m1_hbm_gauss <- add_criterion(m1_hbm_gauss, "bayes_R2")
+m1_hbm_gauss_het <- add_criterion(m1_hbm_gauss_het, "bayes_R2")
+
+m1_hbm_gauss <- add_criterion(m1_hbm_gauss, "loo")
+m1_hbm_gauss_het <- add_criterion(m1_hbm_gauss_het, "loo")
+
+#loo_compare(m1_hbm_gauss, m1_hbm_gauss_het)
+# bayes_R2(m1_hbm_gauss)
+# bayes_R2(m1_hbm_gauss_het)
+# plot(loo(m1_hbm_gauss))
+# plot(loo(m1_hbm_gauss_het))
 
 ```
 
-### Results
+### shifted log-normal
+
+```{r}
+
+m1_hbm_sln <- brm(
+  f_subj_stroop, 
+  data = drt, 
+  cores = 4,
+  control = list(adapt_delta = 0.99),
+  iter = 4000,
+  family = shifted_lognormal(),
+  file = here("out", "behav", "m1_hbm_sln")
+  )
+
+#m1_hbm_sln <- add_criterion(m1_hbm_sln, "loo")
+
+summary(m1_hbm_sln)
+
+m1_hbm_sln_ndt <- brm(
+  brmsformula(f_subj_stroop, ndt ~ (1 | subj)), 
+  data = drt, 
+  cores = 4,
+  control = list(adapt_delta = 0.99, max_treedepth = 15),
+  iter = 8000,
+  family = shifted_lognormal(),
+  file = here("out", "behav", "m1_hbm_sln_ndt")
+  )
+#m1_hbm_sln_ndt <- add_criterion(m1_hbm_sln_ndt, "loo")
+
+
+m1_hbm_sln_het <- brm(
+  brmsformula(f_subj_stroop, sigma ~ (1 | subj)), 
+  data = drt, 
+  cores = 4,
+  control = list(adapt_delta = 0.99, max_treedepth = 15),
+  iter = 8000,
+  family = shifted_lognormal(),
+  file = here("out", "behav", "m1_hbm_sln_het")
+  )
+
+#m1_hbm_sln_het <- add_criterion(m1_hbm_sln_het, "loo")
+
+
+
+summary(m1_hbm_sln_ndt)
+
+```
+
+
+```{r}
+
+
+loo_compare(m1_hbm_sln, m1_hbm_gauss_het)
+
+
+b_gauss <- coef(m1_hbm_gauss)$subj
+b_sln <- exp(coef(m1_hbm_sln)$subj)
+ndt <- summary(m1_hbm_sln)$spec_pars["ndt", "Estimate"]
+
+plot(
+  b_gauss[, "Estimate", "Intercept"],
+  ndt + b_sln[, "Estimate", "Intercept"]
+)
+abline(0, 1)
+
+plot(
+  b_gauss[, "Estimate", "Intercept"] + b_gauss[, "Estimate", "trial_typeincon"],
+  ndt + b_sln[, "Estimate", "Intercept"] * b_sln[, "Estimate", "trial_typeincon"]
+)
+abline(0, 1)
+
+plot(
+  b_gauss[, "Estimate", "trial_typeincon"],
+  b_sln[, "Estimate", "Intercept"] * b_sln[, "Estimate", "trial_typeincon"] - b_sln[, "Estimate", "Intercept"]
+)
+abline(0, 1)
+
+```
+
+
+## Results
 
 ```{r}
 
