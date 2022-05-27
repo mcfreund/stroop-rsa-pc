@@ -38,14 +38,14 @@ point_size_big <- 1.5
 measure <- "crcor"
 seswaves <- c("baseline_wave1")
 glmnames <- list(
-    hrf = c("glmsingle_wave1_target_hrf", "glmsingle_wave1_distractor_hrf", "glmsingle_wave1_congruency_hrf"),
-    rr = c("glmsingle_wave1_target_hrf_rr", "glmsingle_wave1_distractor_hrf_rr", "glmsingle_wave1_congruency_hrf_rr")
+    hrf = c("glmsingle_wave1_target_denoise_hrf", "glmsingle_wave1_distractor_denoise_hrf", "glmsingle_wave1_congruency_denoise_hrf"),
+    rr = c("glmsingle_wave1_target_denoise_hrf_rr", "glmsingle_wave1_distractor_denoise_hrf_rr", "glmsingle_wave1_congruency_denoise_hrf_rr")
     )
 sessions <- c("baseline")
 subjlist <- "wave1_unrel_pilot"
 roiset <- "glasser2016_parcel"
 prewh <- "none"
-ttype_subset <- "bias"
+ttype_subset <- "pc50"
 
 rois <- data.frame(
     region = combo_paste(c("L_", "R_"), c("SCEF", "8BM",  "p32pr", "a32pr", "p9-46v", "i6-8", "8Av", "8C")),
@@ -89,8 +89,13 @@ dat_orig <- lapply(
 dat_orig <- rbindlist(dat_orig)[subject %in% unique(dat$subject)]
 dat_orig$glmname <- "lsall_1rpm"
 dat_all <- rbind(dat_orig, dat)
+dat_all$glmname <- gsub("_denoise", "", dat_all$glmname)
 dat_w <- dat_all %>% pivot_wider(names_from = "glmname", values_from = "b")
 
+glmnames <- list(
+    hrf = c("glmsingle_wave1_target_hrf", "glmsingle_wave1_distractor_hrf", "glmsingle_wave1_congruency_hrf"),
+    rr = c("glmsingle_wave1_target_hrf_rr", "glmsingle_wave1_distractor_hrf_rr", "glmsingle_wave1_congruency_hrf_rr")
+    )
 
 ```
 
