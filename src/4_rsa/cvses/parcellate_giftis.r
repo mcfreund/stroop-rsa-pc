@@ -19,7 +19,7 @@
 
 ## setup ----
 
-variables <- c("target", "distractor", "congruency")
+variables <- c("target_denoise", "distractor_denoise", "congruency_denoise")
 fnames <- c(hrf = "betas_fithrf.h5", hrf_rr = "betas_rr.h5")# hrf_denoise, hrf_denoise_rr
 glmname <- "glmsingle_wave1"
 atlas_name <- "glasser2016"
