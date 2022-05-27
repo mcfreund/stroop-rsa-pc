@@ -10,7 +10,8 @@ out/res/*Schaefer2018*
 out/sim
 out/res_decoding
 out/behav
-
+out/res
+*.html
 src/scratch
 misc/profile.html
 
