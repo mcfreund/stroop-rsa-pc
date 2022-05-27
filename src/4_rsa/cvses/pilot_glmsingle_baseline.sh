@@ -1,5 +1,5 @@
 subjlist=("wave1_unrel_pilot")
-variables=("target" "distractor" "congruency")
+variables=("target_denoise" "distractor_denoise" "congruency_denoise")
 glmtypes=("hrf" "hrf_rr")
 
 
