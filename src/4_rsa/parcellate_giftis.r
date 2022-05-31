@@ -42,16 +42,16 @@ task <- "Stroop"
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
     atlas_name <- "glasser2016"
-    roi_col <- "network"
+    roi_col <- "superparcel"
     space <- "fsaverage5"
-    subjlist <- "wave1_unrel"
-    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
-    sessions <- "reactive"#c("baseline", "proactive", "reactive")
+    subjlist <- "baseline_wave1"
+    subjects <- fread(here("out", "subjs", paste0("subjlist_", subjlist, ".txt")))[[1]]
+    sessions <- "baseline"#"reactive"#c("baseline", "proactive", "reactive")
     waves <- c("wave1")
     glm_i <- 94
     n_cores <- 20
-    overwrite <- TRUE
-    delete_files <- TRUE
+    overwrite <- FALSE
+    delete_files <- FALSE
 } else {
     source(here("src", "parse_args.r"))
     print(args)
@@ -69,8 +69,10 @@ if (glmname == "lssep_1rpm") {
 tinfo <- read_trialinfo()[subj %in% subjects & wave %in% waves & session %in% sessions]
 setkey(tinfo, subj, wave, session, run)  ## for quick subsetting within loop below
 atlas <- load_atlas(atlas_name, space)
+atlas <- add_superparcels(atlas, superparcels, roi_col = roi_col)
 roiset <- paste0(atlas_name, "_", roi_col)
 rois <- unique(atlas$key[[roi_col]])
+rois <- rois[!is.na(rois)]
 
 ## execute ----
 
@@ -102,9 +104,13 @@ res <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
         concat_hemis(input_val$hemi, pattern = pattern) %>% ## extract data and concatenate
         rename_dim(tlabels) %>% ## add trialtypes to colnames
         .[, Var(., 2) != 0L] %>%  ## filter regressors that are all zero
-        parcellate(atlas, roi_col) ## split matrix into list of length n_roi
-    
-    out_names <- construct_filename_h5(subject = sub, wave = wav, session = ses, run = run, roiset = roiset, roi = rois)
+        parcellate(atlas, roi_col) %>% ## split matrix into list of length n_roi
+        .[lengths(.) != 0]  ## remove "parcels" with roi_col set to NA
+
+    out_names <- construct_filename_h5(
+        base_dir = here::here("out", "parcellated", ".d2"),
+        subject = sub, wave = wav, session = ses, run = run, roiset = roiset, roi = rois
+        )
     if (!overwrite) {
         is_extant <- file.exists(out_names)
         if (all(is_extant)) return(list("All parcellated data files already exist. Skipping..."))
@@ -114,11 +120,13 @@ res <- foreach(glm_i = seq_along(l), .inorder = FALSE, .combine = "c") %dopar% {
     nms <- enlist(names(parcs))
     for (i in seq_along(parcs)) {
         nms[[i]] <- write_dset(
-            mat = parcs[[i]], roi = names(parcs)[i], 
+            mat = parcs[[i]], roi = names(parcs)[i],
+            base_dir = here::here("out", "parcellated", ".d2"), 
             dset_prefix = "coefs",
             subject = sub, wave = wav, session = ses, run = run, 
             roiset = roiset, glmname = glmname, prewh = "none",
-            write_colnames = TRUE, delete_file = delete_files
+            write_colnames = TRUE, 
+            delete_file = delete_files
             )
         #print(i)
     }

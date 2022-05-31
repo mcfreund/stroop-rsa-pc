@@ -33,12 +33,12 @@ source(here("src", "stroop-rsa-pc.R"))
 task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
-    glmname <- "glmsingle_wave1_target_hrf"
+    glmname <- "lsall_1rpm"
     atlas_name <- "glasser2016"
     space <- "fsaverage5"
     roi_col <- "parcel"
-    subjlist <- "wave1_unrel_pilot"
-    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
+    subjlist <- "baseline_wave1"
+    subjects <- fread(here("out", "subjs", paste0("subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
     sessions <- "baseline"
     measure <- "crcor"  ## crcor
@@ -47,7 +47,7 @@ if (interactive()) {  ## add variables (potentially unique to this script) usefu
     ii <- 1
     n_cores <- 28
     run_i <- 1
-    n_resamples <- 1E2
+    n_resamples <- 1E3
     overwrite <- TRUE
 } else {
     source(here("src", "parse_args.r"))
@@ -58,9 +58,12 @@ stopifnot(sessions %in% c("baseline", "proactive", "reactive"))
 stopifnot(measure %in% c("crcor", "cveuc"))
 
 atlas <- load_atlas(atlas_name, space)
+atlas <- add_superparcels(atlas, superparcels, roi_col = roi_col)
+roiset <- paste0(atlas_name, "_", roi_col)
 rois <- unique(atlas$key[[roi_col]])
+rois <- rois[!is.na(rois)]
 ## remove hippocampi from glasser atlas (not represented in fsaverages???)
-if (atlas_name == "glasser2016" && grepl("fsaverage", space)) {
+if (roi_col == "parcel" && atlas_name == "glasser2016" && grepl("fsaverage", space)) {
     rois <- rois[rois != "L_H" & rois != "R_H"]
 }
 roiset <- paste0(atlas_name, "_", roi_col)
@@ -70,6 +73,7 @@ roiset <- paste0(atlas_name, "_", roi_col)
 
 
 input <- construct_filenames_h5(
+    base_dir = here::here("out", "parcellated", ".d2"),
     prefix = "coefs", subjects = subjects, waves = waves, sessions = sessions, rois = rois, runs = runs, 
     glmname = glmname, prewh = prewh
 )
@@ -80,7 +84,7 @@ l <- split(input, by = "g")
 ## skip computation of existing output files if overwrite == FALSE:
 
 fname <- construct_filename_rdm(
-    measure = measure, glmname = glmname, ttype_subset = ttype_subset, roiset = roiset, prewh = prewh
+    measure = measure, glmname = glmname, ttype_subset = ttype_subset, roiset = roiset, prewh = paste0(prewh, "__", Sys.Date())
     )  ## output file
 
 if (!overwrite) {
@@ -121,7 +125,6 @@ if (measure == "crcor") {
         mc.cores = n_cores
     )
 }
-
 
 ## make larger chunks for each core by redefining looping variable (have each core loop over ROIs):
 

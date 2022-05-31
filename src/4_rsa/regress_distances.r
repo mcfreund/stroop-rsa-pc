@@ -36,14 +36,14 @@ source(here("src", "stroop-rsa-pc.R"))
 task <- "Stroop"
 
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
-    glmname <- "glmsingle_wave1_target_hrf"
+    glmname <- "lsall_1rpm"
     prewh <- "none"
     atlas_name <- "glasser2016"
     roi_col <- "parcel"
     space <- "fsaverage5"
     measure <- "crcor"
-    subjlist <- "wave1_unrel_pilot"
-    subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
+    subjlist <- "baseline_wave1"
+    subjects <- fread(here("out", "subjs", paste0("subjlist_", subjlist, ".txt")))[[1]]
     waves <- "wave1"
     sessions <- "baseline"
     ttype_subset <- "bias"
@@ -63,12 +63,16 @@ if (!exists("suffix")) suffix <- ""
 subjects <- as.character(subjects)
 
 atlas <- load_atlas(atlas_name, space)
+atlas <- add_superparcels(atlas, superparcels, roi_col = roi_col)
+roiset <- paste0(atlas_name, "_", roi_col)
 rois <- unique(atlas$key[[roi_col]])
+rois <- rois[!is.na(rois)]
 ## remove hippocampi from glasser atlas (not represented in fsaverages???)
 if (atlas_name == "glasser2016" && grepl("fsaverage", space)) {
     rois <- rois[rois != "L_H" & rois != "R_H"]
 }
 roiset <- paste0(atlas_name, "_", roi_col)
+
 X <- enlist(sessions)
 for (session in sessions) X[[session]] <- read_model_xmat(measure, session, ttype_subset)
 
@@ -81,7 +85,7 @@ for (session in sessions) {
     for (wave in waves) {
         D[[paste0(session, "_", wave)]] <- 
             read_rdms(
-                .measure = measure, .prewh = prewh,
+                .measure = measure, .prewh = paste0(prewh, "__2022-05-30"),
                 .glmname = glmname, .roiset = roiset, .waves = wave,
                 .session = session, .subjects = subjects,
                 .ttype_subset = ttype_subset,
@@ -130,6 +134,7 @@ data <- separate(data, subject_wave_session, into = c("subject", "wave", "sessio
 
 fout <- construct_filename_weights(
     measure = measure, subjlist = subjlist, glmname = glmname, roiset = roiset, ttype_subset = ttype_subset, 
-    prewh = prewh, suffix = suffix
+    prewh = prewh, suffix = suffix,
+    base_dir = here("out", "weights")
     )
 fwrite(data, fout)

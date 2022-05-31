@@ -68,3 +68,5 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+out/weights
