@@ -105,8 +105,47 @@ core32 <- c(
 )  ## parcel indexes in Schaefer2018
 
 
+superparcels <- list(
+  ## lateral posterior parietal cortex (intraparietal sulcus):
+  ## parcels tiling intraparietal sulcus (from IP0 to S1 [area 2]) and IPL (medial aspect) / SPL (lateral aspect)
+  lppc     = c("IP0", "IPS1", "IP1", "MIP", "7PL", "7AL", "7PC", "VIP", "LIPv", "LIPd", "AIP", "IP2"),
+  ## dorsomedial fc:
+  ##  SMA/pre-sma: SCEF, 8BM
+  ##  dACC: a32pr, p32pr, d32 (d32 is default mode in Cole-Anticevic)
+  dmfc      = c("SCEF", "8BM",  "p32pr", "a32pr"),
+  #dmfc.alt  = c("SCEF", "8BM",  "p32pr", "a32pr", "d32"),
+  ## dlpfc:
+  ## parcels tiling middle frontal gyrus
+  ## 46 is default mode in cole-anticevic
+  ## a9-46v, 9-46d are rostral, can be considered fronto-polar cortex
+  dlpfc     = c("p9-46v", "i6-8", "8Av", "8C"), ## along middle frontal gyrus
+  #dlpfc.alt = c("p9-46v", "i6-8", "8Av", "8C", "46", "a9-46v", "9-46d"),
+  dpm       = c("6a", "FEF", "6ma"), ## dorsal premotor
+  vpm       = c("6v", "PEF", "6r", "55b", "IFJp"),  ## ventral premotor
+  vvis      = c("FFC", "VVC", "V8", "VMV3"),
+  ins       = c("FOP4", "FOP5", "FOP3", "AVI", "MI"),
+  ifc       = c("IFJa", "44", "45", "IFSa", "p47r", "IFSp", "a47r", "47l"),
+  ofc       = c("47s", "47m", "11l", "13l", "OFC", "10pp", "10v", "10r", "s32", "p32", "a24", "25", "pOFC"),
+  fpc       = c("46", "9-46d", "a9-46v", "a10p", "p10p", "9a", "9p", "10d")
+)
 
-
+superparcels <- c(
+    setNames(lapply(superparcels, function(x) paste0("R_", x)), paste0("R_", names(superparcels))),
+    setNames(lapply(superparcels, function(x) paste0("L_", x)), paste0("L_", names(superparcels)))
+)
+add_superparcels <- function(atlas, superparcels, roi_col = "superparcel") {
+    if (roi_col == "superparcel") {
+        if (atlas_name == "glasser2016") {
+            atlas$key$superparcel <- as.character(NA)
+            for (sp in names(superparcels)) {
+                atlas$key[parcel %in% superparcels[[sp]], "superparcel"] <- sp
+            }
+        } else {
+        stop("superparcels not defined for atlas other than glasser2016 yet.")
+        }
+    }
+    atlas
+}
 ## functions ----
 
 ## misc
@@ -440,15 +479,15 @@ write_dset <- function(
 }
 
 construct_filenames_h5 <- function(
-    prefix, subjects, waves, sessions, rois, runs, glmname, prewh
+    prefix, subjects, waves, sessions, rois, runs, glmname, prewh, base_dir = here::here("out", "parcellated", ".d")
     ){    
     input <- expand.grid(
         subj = subjects, wave = waves, session = sessions, roi = rois, run = runs, 
         stringsAsFactors = FALSE
         )
     setDT(input)
-    input[, file_name := construct_filename_h5(subj, wave, session, run, roiset, roi)]
-    input[, dset_name := construct_dsetname_h5(prefix, subj, wave, session, run, roiset, roi, glmname, prewh)]
+    input[, file_name := construct_filename_h5(subj, wave, session, run, roiset, roi, base_dir = base_dir)]
+    input[, dset_name := construct_dsetname_h5(prefix, subj, wave, session, run, roiset, roi, glmname, prewh, base_dir = base_dir)]
     input
 }
 
