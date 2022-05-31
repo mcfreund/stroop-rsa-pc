@@ -6,7 +6,7 @@ roi_col <- args$roi_col
 subjlist <- args$subjlist
 waves <- strsplit(args$waves, "\\|")[[1]]
 sessions <- strsplit(args$sessions, "\\|")[[1]]
-subjects <- data.table::fread(here("out", paste0("subjlist_", subjlist, ".txt")))[[1]]
+subjects <- data.table::fread(here("out", "subjs", paste0("subjlist_", subjlist, ".txt")))[[1]]
 space <- args$space
 
 if ("n_cores" %in% names(args)) n_cores <- as.numeric(args$n_cores)  ## optional arg that needs coersion

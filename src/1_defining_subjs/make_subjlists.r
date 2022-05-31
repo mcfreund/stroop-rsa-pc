@@ -13,6 +13,54 @@ sample_cotwins <- function(x) {
     pull(subj)
 }
 
+snew <- fread(here("out", paste0("subjlist_2022-05-27.csv")))
+## single session lists
+glmname <- "lsall_1rpm"
+for (wav in c("wave1", "wave2")) {
+  for (ses in c("baseline", "proactive", "reactive")) {
+    subjs <- snew[session == ses & wave == wav, subj]
+    fnames <- here(
+      "out", "glms", subjs, wav, "RESULTS", "Stroop", 
+      paste0(ses, "_", glmname), 
+      paste0("STATS_", subjs, "_run1_L_REML.func.gii")
+        )
+    file_exists <- file.exists(fnames)
+    print(paste0(sum(file_exists), "/", length(file_exists)))
+    print(c("missing:", subjs[!file_exists]))
+    subjs <- as.data.frame(subjs[file_exists])
+    fname <- here("out", "subjs", paste0("subjlist_", ses, "_", wav, ".txt"))
+    fwrite(subjs, fname, col.names = FALSE)
+  }
+}
+## cross-session lists
+for (wav in c("wave1", "wave2")) {
+  
+    subjs <- snew[wave == wav, unique(subj)]
+    #is_good_subj <- table(subjs) == 3
+    subjs_fitted <- c()
+    for (ses in sessions) {
+      fnames <- here(
+        "out", "glms", subjs, wav, "RESULTS", "Stroop", 
+        paste0(ses, "_", glmname), 
+        paste0("STATS_", subjs, "_run1_L_REML.func.gii")
+          )
+      file_exists <- file.exists(fnames)
+      subjs_fitted <- c(subjs_fitted, subjs[file_exists])
+    }
+    counts <- table(subjs_fitted)
+    subjs_complete <- names(counts == 3)
+    print(length(subjs_complete))    
+    
+    fname <- here("out", "subjs", paste0("subjlist_", wav, ".txt"))
+    fwrite(as.data.frame(subjs_complete), fname, col.names = FALSE)
+
+}
+
+
+
+
+
+
 s <- fread(here("out", "subjlist.csv"))
 
 ## wave 1 list: baseline, proactive, reactive
@@ -91,3 +139,6 @@ fwrite(as.data.frame(replication_cotwins), here("out", "subjlist_jneurosci_repli
 s_mc1 <- s[session == "baseline" & wave == "wave1"]
 mc1_cotwins_exclude <- sample_cotwins(s_mc1)
 fwrite(s_mc1[!subj %in% mc1_cotwins_exclude, "subj"], here("out", "subjlist_mc1_unrel1.txt"), col.names = FALSE)
+
+
+
