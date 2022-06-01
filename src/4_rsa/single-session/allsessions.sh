@@ -122,3 +122,34 @@ do
         done
     done    
 done
+
+
+
+# measure="crcor"
+# wave="wave2"
+# atlas_name="schaefer2018_17_200"
+# ttype_subsets=("bias" "pc50")
+# sessions=("proactive" "reactive")
+# roi_col="parcel"
+# space="fsaverage5"
+# prewh="none"
+# for session in ${sessions[@]}
+# do
+#     subjlist=${session}_$wave
+#     for ttype_subset in ${ttype_subsets[@]}
+#     do
+#         echo -------- $wave $session $ttype_subset:  
+#         Rscript ./src/4_rsa/regress_distances.r \
+#             --glmname $glmname \
+#             --atlas_name $atlas_name \
+#             --space $space \
+#             --roi_col $roi_col \
+#             --subjlist $subjlist \
+#             --waves $wave \
+#             --sessions $session \
+#             --measure $measure \
+#             --prewh $prewh \
+#             --ttype_subset $ttype_subset \
+#             --suffix "__seswave-"$session"_"$wave
+#     done
+# done

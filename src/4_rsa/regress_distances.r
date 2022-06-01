@@ -38,19 +38,17 @@ task <- "Stroop"
 if (interactive()) {  ## add variables (potentially unique to this script) useful for dev
     glmname <- "lsall_1rpm"
     prewh <- "none"
-    atlas_name <- "glasser2016"
+    atlas_name <- "schaefer2018_17_200"
     roi_col <- "parcel"
     space <- "fsaverage5"
     measure <- "crcor"
-    subjlist <- "baseline_wave1"
+    subjlist <- "proactive_wave2"
     subjects <- fread(here("out", "subjs", paste0("subjlist_", subjlist, ".txt")))[[1]]
-    waves <- "wave1"
-    sessions <- "baseline"
+    waves <- "wave2"
+    sessions <- "proactive"
+    #sessions <- "baseline"
     ttype_subset <- "bias"
     subject = subjects[1]
-    wave = waves[1]
-    subject_i = 1
-    wave_i = 1
     suffix <- "__seswave-baseline_wave1"
 } else {
     source(here("src", "parse_args.r"))
@@ -85,7 +83,7 @@ for (session in sessions) {
     for (wave in waves) {
         D[[paste0(session, "_", wave)]] <- 
             read_rdms(
-                .measure = measure, .prewh = paste0(prewh, "__2022-05-30"),
+                .measure = measure, .prewh = paste0(prewh, "__2022-05-31"),  ## need to change this manually....
                 .glmname = glmname, .roiset = roiset, .waves = wave,
                 .session = session, .subjects = subjects,
                 .ttype_subset = ttype_subset,
@@ -95,7 +93,6 @@ for (session in sessions) {
             )
     }
 }
-
 
 res <- enlist(combo_paste(subjects, waves, sessions, sep = "_"))
 for (subject_i in seq_along(subjects)) {
