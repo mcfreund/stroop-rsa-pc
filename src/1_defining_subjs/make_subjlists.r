@@ -48,7 +48,7 @@ for (wav in c("wave1", "wave2")) {
       subjs_fitted <- c(subjs_fitted, subjs[file_exists])
     }
     counts <- table(subjs_fitted)
-    subjs_complete <- names(counts == 3)
+    subjs_complete <- names(counts)[counts == 3]
     print(length(subjs_complete))    
     
     fname <- here("out", "subjs", paste0("subjlist_", wav, ".txt"))

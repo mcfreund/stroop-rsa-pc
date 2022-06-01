@@ -8,7 +8,7 @@ if (interactive()) {  ##  for dev:
     atlas_name <- "glasser2016"  ## "schaefer2018_17_200"
     space <- "fsaverage5"
     roi_col <- "parcel"
-    subjlist <- "wave1_unrel"
+    subjlist <- "wave1"
     dowave <- 1
     n_cores <- 24
     n_resamples <- 1E2
@@ -69,8 +69,9 @@ source(here("src", "stroop-rsa-pc.R"))
 
 ## set variables
 
-subjects <- fread(here("out", paste0("subjlist_", subjlist, ".txt")))[, V1]
+subjects <- fread(here("out", "subjs", paste0("subjlist_", subjlist, ".txt")))[, V1]
 waves <- waves[dowave]
+stopifnot(length(waves) == 1)  ## only configured for one wave at a time.
 task <- "Stroop"
 variables <- c("target", "distractor", "congruency")
 train_session <- "baseline"
@@ -104,6 +105,17 @@ if (atlas_name == "glasser2016" && grepl("fsaverage", space)) {
 }
 roiset <- paste0(atlas_name, "_", roi_col)
 
+## output filename
+
+suffix_divnorm <- switch(divnorm + 1, "", "__divnormed")
+suffix_demean <- switch(demean + 1, "", "__demeaned")
+suffix_center <- switch(center + 1, "", "__centered")
+suffix_detrend <- switch(detrend + 1, "", paste0("__detrended", degree))
+fname <- paste0(
+    "trainbaseline__", waves, "__", decoder, "__", atlas_name, "__", roi_col, "__nresamp", n_resamples, "__", glmname, 
+    suffix_divnorm, suffix_demean, suffix_center, suffix_detrend, 
+    ".txt"
+    )
 
 ## utilities
 
@@ -118,7 +130,6 @@ summarize_predictions <- function(fit, newdata, decoder) {
     x
 
 }
-
 
 ## looping info
 
@@ -139,7 +150,6 @@ g <- unique(input$g)
 
 
 ## run ----
-
 
 time_beg <- Sys.time()
 cl <- makeCluster(n_cores, type = "FORK")
@@ -367,53 +377,14 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
     }  ## end ROI loop
 
     res_dt <- rbindlist(res, id = "roi")
-    # fname <- paste0(decoder, "__", atlas_name, "__", roi_col, "__nresamp", n_resamples, "__", glmname, "_", id, ".txt")
-    # fwrite(res_dt, here("out", "res_decoding", fname))
-    res_dt
+    
+    ## save:
+    
+    dir_out <- here("out", "decoding", unique(inputs$subj))
+    dir.create(dir_out, recursive = TRUE, showWarnings = FALSE)
+    fwrite(res_dt, here("out", "res_decoding", fname))
 
 }
 stopCluster(cl)
 time_end <- Sys.time()
 print(time_end - time_beg)
-
-outd <- rbindlist(out)
-outd <- separate(outd, "roi", c("subj", "roi"), sep = "__")
-
-
-## flags:
-suffix_divnorm <- switch(divnorm + 1, "", "__divnormed")
-suffix_demean <- switch(demean + 1, "", "__demeaned")
-suffix_center <- switch(center + 1, "", "__centered")
-suffix_detrend <- switch(detrend + 1, "", paste0("__detrended", degree))
-fname <- here(
-    "out", "decoding",
-    paste0(
-        decoder, "__", atlas_name, "__", roi_col, "__nresamp", n_resamples, "__", glmname, 
-        suffix_divnorm, suffix_demean, suffix_center, suffix_detrend, 
-        ".txt"
-    )
-)
-fwrite(outd, fname)
-
-
-## checking resampling code ----
-
-# table(s(idx$bias))
-# table(colnames(idx$pc50))
-# table(colnames(idx$biaspc50))
-
-# table(gsub("[A-z]", "", colnames(idx$bias)))
-# table(gsub("[A-z]", "", colnames(idx$pc50)))
-# table(gsub("[A-z]", "", colnames(idx$biaspc50)))
-
-# table(get_variable(gsub("_run[0-9]", "", colnames(idx$bias)), "target"))
-# table(get_variable(gsub("_run[0-9]", "", colnames(idx$pc50)), "target"))
-# table(get_variable(gsub("_run[0-9]", "", colnames(idx$biaspc50)), "target"))
-
-# table(get_variable(gsub("_run[0-9]", "", colnames(idx$bias)), "distractor"))
-# table(get_variable(gsub("_run[0-9]", "", colnames(idx$pc50)), "distractor"))
-# table(get_variable(gsub("_run[0-9]", "", colnames(idx$biaspc50)), "distractor"))
-
-# table(get_variable(gsub("_run[0-9]", "", colnames(idx$bias)), "congruency"))
-# table(get_variable(gsub("_run[0-9]", "", colnames(idx$pc50)), "congruency"))
-# table(get_variable(gsub("_run[0-9]", "", colnames(idx$biaspc50)), "congruency"))
