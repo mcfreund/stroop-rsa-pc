@@ -39,8 +39,8 @@ if (interactive()) {  ##  for dev:
     parser$add_argument("--center", action = "store_true")
     parser$add_argument("--detrend", action = "store_true")
     parser$add_argument("--degree", type = "double", default = 1)
-    parser$add_argument("--demean", action = "store_false")
-    parser$add_argument("--divnorm", action = "store_false")
+    parser$add_argument("--demean", action = "store_true")
+    parser$add_argument("--divnorm", action = "store_true")
 
     args <- parser$parse_args()
     print(args)
@@ -91,7 +91,6 @@ stimuli_drop <- list(
 )
 stimuli_to6 <- c("blueBLUE_run1", "purplePURPLE_run1", "redRED_run2", "whiteWHITE_run2")
 stimuli_to3 <- c("blueBLUE_run2", "purplePURPLE_run2", "redRED_run1", "whiteWHITE_run1")
-stimuli_eachrun <- c("blackBLACK", "greenGREEN", "pinkPINK", "yellowYELLOW")
 
 ## atlas info:
 
@@ -114,7 +113,7 @@ suffix_detrend <- switch(detrend + 1, "", paste0("__detrended", degree))
 fname <- paste0(
     "trainbaseline__", waves, "__", decoder, "__", atlas_name, "__", roi_col, "__nresamp", n_resamples, "__", glmname, 
     suffix_divnorm, suffix_demean, suffix_center, suffix_detrend, 
-    ".txt"
+    ".RDS"
     )
 
 ## utilities
@@ -186,10 +185,8 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
         if (center) {
             ## regress mean pattern?
             B_prep <- lapply(B_prep, function(betas) {
-                betas_i <- betas[, colnames(betas) %in% stimuli_eachrun]
-                mu <- average(betas_i, colnames(betas_i))
-                mubar <- cbind(scale2unit(rowMeans(mu)))
-                fit <- .lm.fit(x = mubar, y = betas)
+                mubar <- rowMeans(betas[, colnames(betas) %in% stimsets$pc50])
+                fit <- .lm.fit(x = cbind(mubar), y = betas)
                 resid(fit)
             })
         }
@@ -214,15 +211,16 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
             )
         }
         if (demean) {
-            ## remove regional mean (uniform activity level) from each trial (all data)?
+            ## remove regional mean (uniform activity level) from each trial?
             B_prep <- lapply(B_prep, scale, center = TRUE, scale = FALSE)
         }
         if (divnorm) {
-            ## divisive normalize each vertex by within-condition*run*session stdev (all data)?
+            ## divisive normalize each vertex by residual sdev over trials? (univariate prewhiten)
             B_prep <- lapply(B_prep, function(betas){
-                betas_i <- betas[, colnames(betas) %in% stimuli_eachrun]
+                betas_i <- betas[, colnames(betas) %in% stimsets$pc50]
                 eps <- resid(.lm.fit(x = indicator(colnames(betas_i)), y = t(betas_i)))
-                crossprod(diag(1/sqrt(Var(eps, 2))), betas)
+                sdev <- sqrt(Var(eps, 2))
+                crossprod(diag(1/sdev), betas)
             })
         }
 
@@ -382,7 +380,7 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
     
     dir_out <- here("out", "decoding", unique(inputs$subj))
     dir.create(dir_out, recursive = TRUE, showWarnings = FALSE)
-    fwrite(res_dt, here("out", "res_decoding", fname))
+    saveRDS(res_dt, here("out", "decoding", unique(inputs$subj), fname))
 
 }
 stopCluster(cl)

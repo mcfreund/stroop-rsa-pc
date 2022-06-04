@@ -5,7 +5,7 @@ roi_cols=("superparcel" "parcel")
 
 ## constants
 glmname="lsall_1rpm"
-n_cores=24
+n_cores=26
 decoder="svm"
 
 ## parcellate ----
