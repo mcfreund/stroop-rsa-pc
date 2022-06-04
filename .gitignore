@@ -70,3 +70,4 @@ po/*~
 rsconnect/
 
 out/weights
+out/decoding
