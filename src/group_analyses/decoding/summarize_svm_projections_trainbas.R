@@ -141,78 +141,8 @@ for (atlas_roi_nm in atlas_roi_nms) {
 
 
     saveRDS(d_new, file.path(subjdir, fname_out))
+    print(file.path(subjdir, fname_out))
 
 
   }
 }
-
-
-
-
-
-
-
-
-
-## scratch ---
-
-# for (subjdir in subjdirs) {
-  
-#   d <- readRDS(file.path(subjdir, fname_in))
-  
-#   d$target <- get_variable(d$stimulus, "target")
-#   d$distractor <- get_variable(d$stimulus, "distractor")
-#   d$congruency <- get_variable(d$stimulus, "congruency")
-#   nms <- names(d)
-#   d$proj <- as.numeric(NA)
-
-#   subset_nms <- c("bias", "pc50", "biaspc50")
-#   names(ttypes)[names(ttypes) == "all"] <- "biaspc50"
-
-
-
-
-
-
-
-
-
-#   for (ttype_subset in subset_nms) {
-
-#     for (variable in c("target", "distractor", "congruency")) {  ## loop over factors
-      
-#       if (variable != "congruency" & ttype_subset == "biaspc50") next
-#       values <- unique(get_variable(ttypes[[ttype_subset]], variable))
-      
-#       for (var_val in values) {  ## loop over levels
-
-#         var_cols <- nms[grepl(paste0("proj.*", var_val), nms)]  ## get colnames of relevant projections
-#         is_val <- d$variable == variable & d[[variable]] == var_val & d[, train_stimset] == ttype_subset
-#         raw_projs <- d[is_val, ..var_cols]  ## get just cols with data
-#         var_cols <- var_cols[!is_equal(colMeans(is.na(raw_projs)), 1)]  ## take only colnames that have observations
-        
-#         is_positive <- sapply(strsplit(gsub("proj.", "", var_cols), "/"), "[", 1) == var_val
-#         projs <- numeric(nrow(raw_projs))  ## summarized projections
-        
-#         if (any(is_positive)) {
-#           pos_cols <- var_cols[is_positive]
-#           projs <- projs + rowMeans(raw_projs[, ..pos_cols])
-#         }
-#         if (any(!is_positive)) {
-#           neg_cols <- var_cols[!is_positive]
-#           projs <- projs - rowMeans(raw_projs[, ..neg_cols])
-#         }
-
-#         d[is_val, proj := projs]
-
-#       }
-#     }
-
-#   }
-
-#   cols_discard <- nms[grep("proj\\..*", nms)]
-#   d <- d[, -..cols_discard]
-  
-#   saveRDS(d, file.path(subjdir, fname_out))
-
-# }
