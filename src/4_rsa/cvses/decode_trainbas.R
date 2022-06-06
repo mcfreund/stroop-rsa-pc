@@ -7,20 +7,20 @@ if (interactive()) {  ##  for dev:
     glmname <- "lsall_1rpm"
     atlas_name <- "glasser2016"  ## "schaefer2018_17_200"
     space <- "fsaverage5"
-    roi_col <- "parcel"
+    roi_col <- "superparcel"
     subjlist <- "wave1"
     dowave <- 1
-    n_cores <- 24
+    n_cores <- 8
     n_resamples <- 1E2
     decoder <- "svm"
     center <- TRUE
-    detrend <- TRUE
+    detrend <- FALSE
     degree <- 1
     demean <- TRUE
     divnorm <- TRUE
-    stimset <- "pc50"
-    ii = 1
-    roi_i <- 1
+    # stimset <- "pc50"
+    # ii = 1
+    # roi_i <- 1
 
 } else {
 
@@ -125,7 +125,7 @@ summarize_predictions <- function(fit, newdata, decoder) {
     } else {
         stop("not yet configured for anything but svm.")
     }
-    
+
     x
 
 }
@@ -157,10 +157,9 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
 
     id <- g[ii]
     inputs <- input[g == id]
-    
+
     res <- enlist(paste0(id, "__", rois))
     for (roi_i in seq_along(rois)) {
-        
 
         ## read betas:
         B <- enlist(combo_paste(sessions, "_", runs))
@@ -169,18 +168,21 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
                 sesrun <- paste0(session_nm, "_", run_nm)
                 nms <- inputs[roi == rois[roi_i] & run == run_nm & session == session_nm, c("file_name", "dset_name")]
                 B[[sesrun]] <- read_dset(nms$file_name, nms$dset_name)
+                # B[[sesrun]] <- tryCatch(
+                #     mean(read_dset(nms$file_name, nms$dset_name)),
+                #     error = "could not read"
+                # )
             }
         }
-        
+    #     # bad <- lapply(B, function(x) identical(x, "could not read"))
+    #     # if (any(bad)) next
 
         ## subset vertices to common "good" set:
         n_vert <- nrow(B[[1]])
         is_good_vert <- rowSums(is_equal(vapply(B, Var, numeric(n_vert)), 0)) < 1
         B <- lapply(B, function(x) x[is_good_vert, ])  ## discard vertices with no BOLD signal
-        
 
         ## preprocess each session*run
-        
         B_prep <- B  ## copy
         if (center) {
             ## regress mean pattern?
@@ -232,7 +234,7 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
             b[[stimset]] <- enlist(variables)
             for (variable in variables) {
                 ## skip bad combo:
-                if (variable %in% c("target", "distractor") && stimset == "biaspc50") next                
+                if (variable %in% c("target", "distractor") && stimset == "biaspc50") next
                 bi <- enlist(runs)
                 for (run in runs) {
                     if (variable %in% c("target", "distractor")) to_drop <- stimuli_drop[[run]]
@@ -247,7 +249,7 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
         }
 
         ## resample trial indices for training models:
-        if (roi_i == 1) {  ## same order for all ROIs: 
+        if (roi_i == 1) {  ## same order for all ROIs:
             idx <- enlist(names(stimsets))
             for (stimset in names(stimsets)) {  
                 idx[[stimset]] <- enlist(variables)
@@ -267,19 +269,22 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
                             ## conditions to downsample to 6
                             trial_idx6 <- which(trial_labels %in% stimuli_to6)
                             trial_labels_to6 <- trial_labels[trial_idx6]
-                            to6 <- resample_idx(trial_labels_to6, n_resamples, resample_to = 6)  ## inds wrt trial_labels_to6
+                            ## inds wrt trial_labels_to6:
+                            to6 <- resample_idx(trial_labels_to6, n_resamples, resample_to = 6)
                             idx6 <- matrix(NA, ncol  = ncol(to6), nrow = nrow(to6))  ## but need to be wrt trial_inds...
                             dimnames(idx6) <- dimnames(to6)  ## so build new matrix idx6 and fill out
                             for (i in seq_along(trial_idx6)) idx6[to6 == i] <- trial_idx6[i]
                             ## conditions to downsample to 3
                             trial_idx3 <- which(trial_labels %in% stimuli_to3)
                             trial_labels_to3 <- trial_labels[trial_idx3]
-                            to3 <- resample_idx(trial_labels_to3, n_resamples, resample_to = 3)  ## inds wrt trial_labels_to6
+                            ## inds wrt trial_labels_to6:
+                            to3 <- resample_idx(trial_labels_to3, n_resamples, resample_to = 3)
                             idx3 <- matrix(NA, ncol  = ncol(to3), nrow = nrow(to3))  ## but need to be wrt trial_inds...
                             dimnames(idx3) <- dimnames(to3)  ## so build new matrix idx6 and fill out
                             for (i in seq_along(trial_idx3)) idx3[to3 == i] <- trial_idx3[i]
                             ## rest of the items, keep all observations (no resamling necessary)
-                            trial_idxrest <- which(!trial_labels %in% c(stimuli_to3, stimuli_to6))  ## all pc50, bias incon
+                            ## all pc50, bias incon:
+                            trial_idxrest <- which(!trial_labels %in% c(stimuli_to3, stimuli_to6))
                             idx_rest <- matrix(rep(trial_idxrest, n_resamples), nrow = n_resamples, byrow = TRUE)
                             colnames(idx_rest) <- trial_labels[trial_idxrest]
                             ## finally, store:
@@ -300,18 +305,18 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
         for (test_session in test_sessions) {
             for (variable in variables) {
                 for (stimset in names(stimsets)) {
-                    
+
                     if (stimset == "biaspc50" & variable %in% c("target", "distractor")) next  ## skip bad combo
-                    
+
                     nm <- paste0(test_session, "_", variable, "_", stimset)
-                    
+
                     ## get train data:
                     idx_i <- idx[[stimset]][[variable]]
                     traindata <- b[[stimset]][[variable]]
                     colnames(traindata) <- gsub("_run[1-2]", "", colnames(traindata))
                     colnames(idx_i) <- gsub("_run[1-2]", "", colnames(idx_i))
                     y_train <- as.factor(get_variable(colnames(idx_i), variable))
-                    
+
                     ## get test data:
                     testdata <- cbind(
                         B_prep[[paste0(test_session, "_run1")]], 
@@ -340,14 +345,14 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
                         }
 
                         preds_i[[i]] <- summarize_predictions(fit = fit, newdata = t(testdata), decoder = decoder)
-                        
+
                     }
                     preds_sum <- as.matrix(Reduce("+", preds_i) / n_resamples_i)
                     stopifnot(length(test_idx) == nrow(preds_sum))
-                    
+
                     ## extract regional means:
                     mu <- c(means[[paste0(test_session, "_run1")]], means[[paste0(test_session, "_run2")]])
-                    
+
                     preds[[nm]] <- data.table(
                         wave = unique(inputs$wave),
                         session = test_session,
@@ -359,7 +364,7 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
                         mu = mu[test_idx],
                         stimulus = rownames(preds_sum)
                     )
-                    
+
                     stopifnot(length(test_idx) == nrow(preds[[nm]]))
 
                 }
@@ -375,9 +380,9 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
     }  ## end ROI loop
 
     res_dt <- rbindlist(res, id = "roi")
-    
+
     ## save:
-    
+
     dir_out <- here("out", "decoding", unique(inputs$subj))
     dir.create(dir_out, recursive = TRUE, showWarnings = FALSE)
     saveRDS(res_dt, here("out", "decoding", unique(inputs$subj), fname))
