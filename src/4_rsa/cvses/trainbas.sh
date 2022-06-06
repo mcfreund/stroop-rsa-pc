@@ -41,8 +41,13 @@ done
 
 
 
-## with preproc
-
+## with centering
+atlas_names="glasser2016"
+waves="wave1"
+roi_cols="superparcel"
+glmname="lsall_1rpm"
+n_cores=20
+decoder="svm"
 
 for atlas_name in ${atlas_names[@]}
 do
@@ -64,9 +69,8 @@ do
                 --dowave $((wave_i+1)) \
                 --n_cores $n_cores \
                 --decoder $decoder \
-                --center --detrend --degree 1 --demean --divnorm
+                --center --demean --divnorm
 
         done
     done    
 done
-
