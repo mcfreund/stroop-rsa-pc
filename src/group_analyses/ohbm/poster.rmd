@@ -1,0 +1,736 @@
+---
+title: "OHBM 2022"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 2
+        toc_float: true
+        number_sections: true
+        code_folding: hide
+---
+
+
+```{r setup, results = FALSE, message = FALSE, warning = FALSE}
+
+## libraries ----
+
+library(here)
+library(data.table)
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(mfutils)
+library(ggseg)
+library(ggsegExtra)
+library(ggsegSchaefer)
+library(ggsegGlasser)
+library(brms)
+library(broom)
+library(colorspace)
+
+source(here("src", "stroop-rsa-pc.R"))
+
+## settings, params ----
+
+opts_chunk$set(echo = TRUE, out.width = "100%")
+theme_set(theme_bw(base_size = 18))
+
+theme_surface <- list(
+  theme(
+    axis.text = element_blank(),
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks = element_blank(),
+    legend.position = c(0.5, -0.05),
+    legend.title = element_text(size = 10, hjust = 0.5),
+    legend.background = element_blank(),
+    legend.text = element_text(size = 10),
+    legend.direction = "horizontal",
+    legend.key.height = unit(1/3, "cm"), legend.key.width = unit(2/3, "cm"),
+    strip.background = element_blank(),
+    panel.spacing.x = unit(0, "lines"),
+    panel.spacing.y = unit(0, "lines"),
+    plot.title = element_text(hjust = 0.5)
+  )
+)
+theme_basic <- list(
+  theme(
+    #axis.text = element_text(size = 6),
+    panel.grid = element_blank(), 
+    panel.border = element_blank(),
+    legend.background = element_blank(),
+    strip.background = element_blank()
+  )
+)
+
+colors_model <- c(
+  target = "#1b9e77",
+  incongruency = "#d95f02",
+  distractor = "#7570b3"
+)
+
+colors_session <- c(
+  baseline = "#1f78b4",
+  proactive = "#b2df8a",
+  reactive = "#a6cee3"
+)
+
+
+## constants ----
+
+models <- c("incongruency", "distractor", "target")
+subjlists <- combo_paste(sessions, "_", waves)
+seswaves <- subjlists
+glmname <- "lsall_1rpm"
+measure <- "crcor"
+prewh <- "none"
+ttype_subsets <- c("pc50", "bias")
+roisets <- c("glasser2016_parcel")
+
+
+## data ----
+
+## read regression weights:
+
+d_rsa <- enlist(combo_paste(roisets, ttype_subsets, subjlists))
+for (roiset in roisets) {
+  for (ttype_subset in ttype_subsets) {
+    for (subjlist in subjlists) {
+      fname <- construct_filename_weights(
+          ttype_subset = ttype_subset,
+          measure = measure, 
+          subjlist = subjlist,
+          glmname = glmname, 
+          roiset = roiset,
+          prewh = prewh, 
+          suffix = paste0("__seswave-", subjlist),
+          base_dir = here("out", "weights")
+          )
+
+      d <- fread(fname)
+      d$ttype_subset <- ttype_subset
+      d$roiset <- roiset
+      d_rsa[[paste0(roiset, ttype_subset, subjlist)]] <- d
+    }
+  }
+}
+d_rsa <- rbindlist(d_rsa)
+
+## read decoding results
+
+fname <-
+  "trainbaseline__wave1__svm__glasser2016__parcel__nresamp100__lsall_1rpm__divnormed__demeaned__centered_summarized.RDS"
+path_data <- here("out", "decoding")
+subjdirs <- list.dirs(path_data)[-1]
+does_exist <- file.exists(file.path(subjdirs, fname))
+subjdirs <- subjdirs[does_exist]
+l <- parallel::mclapply(subjdirs, function(x) readRDS(file.path(x, fname)), mc.cores = 20)
+d_dec <- rbindlist(l)
+d_dec <- d_dec[train_stimset %in% ttype_subsets]
+## add behavior:
+beh <- fread(here("in", "behavior-and-events_stroop_2022-05-27_nice.csv"))
+beh <- beh %>%
+  group_by(subj, session, wave, run) %>%
+  mutate(trial = trial_num + ifelse(session %in% c("baseline", "proactive"), 108, 120) * (run - 1)) %>%
+  select(wave, session, run, trial, subj, time_target_onset, rt, acc)
+d_dec <- data.table::merge.data.table(d_dec, beh, by = c("subj", "session", "wave", "trial"), all.x = TRUE)
+## add test_stimset:
+d_dec[, test_stimset := ""]
+d_dec[stimulus %in% ttypes$bias, test_stimset := "bias"]
+d_dec[stimulus %in% ttypes$pc50, test_stimset := "pc50"]
+
+
+## configure atlas:
+
+atlas <- glasser
+atlas$data <- atlas$data %>% filter(region != "H")  ## remove HC from atlas, b/c not in data!
+k <- glasser2016_fsaverage5$key %>% 
+  select(region = parcel, network) %>%
+  mutate(region = gsub("L_|R_", "", region))
+
+d_dec[, region := gsub("L_|R_", "", roi)]
+d_dec[, hemi := ifelse(grepl("L_", roi), "left", "right")]
+d_dec <- d_dec[!(region %in% c("10pp") & hemi == "left")]  ## not in glasser ggseg atlas?
+d_dec[, region_hemi := paste0(toupper(substr(hemi, 1, 1)), "_", region)]
+d_dec[, network := k$network[match(region, k$region)]]
+
+d_rsa[, region := gsub("L_|R_", "", roi)]
+d_rsa[, hemi := ifelse(grepl("L_", roi), "left", "right")]
+d_rsa <- d_rsa[!(region %in% c("10pp") & hemi == "left")]  ## not in glasser ggseg atlas?
+d_rsa[, region_hemi := paste0(toupper(substr(hemi, 1, 1)), "_", region)]
+d_rsa[, network := k$network[match(region, k$region)]]
+
+
+## subject lists
+stopifnot(setdiff(d_dec$subj, d_rsa$subject) == character(0))
+
+subjs_table <- as.data.table(table(d_rsa$subject, d_rsa$wave, d_rsa$session) > 0)
+names(subjs_table) <- c("subj", "wave", "session", "has_data")
+subjs_wave1 <-
+  subjs_table %>%
+  filter(wave == "wave1") %>%
+  group_by(subj) %>%
+  summarize(alldat = sum(has_data) == 3) %>%
+  filter(alldat) %>%
+  pull(subj)
+subjs_wave2 <- subjs_table %>%
+  group_by(subj) %>%
+  summarize(alldat = sum(has_data) == 6) %>%
+  filter(alldat) %>%
+  pull(subj)
+
+rois_language <- k %>% filter(network == "Language") %>% pull(region)
+rois_vis <- c("V1", "V2", "V3", "V4")
+
+```
+
+
+
+# within-session RSA
+
+```{r}
+
+d_sum_rsa <-
+  d_rsa %>%
+  filter(subject %in% subjs_wave1, session %in% c("baseline", "proactive"), wave == "wave1", term %in% models) %>%
+  group_by(subject, wave, term, ttype_subset, region, hemi, region_hemi) %>%
+  summarize(b = mean(b)) %>%
+  group_by(wave, term, ttype_subset, region, hemi, region_hemi) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b)
+  ) %>%
+  group_by(wave, term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr")) %>%
+  ungroup
+
+
+d_sum_rsa %>%
+  ggplot() +
+  geom_brain(
+    aes(fill = ifelse(p_fdr < 0.05, t_stat, NA)),
+    atlas = atlas,
+    position = position_brain(. ~ side + hemi)
+    ) +
+  scale_fill_viridis_c(
+    option = "magma", na.value = "grey",
+    breaks = scales::extended_breaks(4)
+    ) +
+  theme_surface +
+  facet_grid(
+    rows = vars(term),
+    cols = vars(ttype_subset),
+    labeller =
+      labeller(
+        ttype_subset = c(bias = "biased stimuli", pc50 = "unbiased stimuli"),
+        term = c(target = "targ", distractor = "distr", incongruency = "incon")
+      )
+    ) +
+  labs(fill = expression("t | p"[FDR]<0.05)) +
+  guides(fill = guide_colorbar(title.position = "top"))
+ggsave(here("out", "ohbm", "maineffects.pdf"), height = 1*3, width = 3*3, dev = "pdf")
+
+
+
+d_sum_rsa %>%
+  pivot_wider(id_cols = c("term", "region_hemi"), names_from = "ttype_subset", values_from = "t_stat") %>%
+  ggplot(aes(bias, pc50)) +
+  geom_abline() +
+  geom_point() +
+  facet_wrap(vars(term), scales = "free")
+
+d_sum_rsa %>%
+  pivot_wider(id_cols = c("term", "region_hemi"), names_from = "ttype_subset", values_from = "t_stat") %>%
+  mutate(contr = pc50 - bias) %>%
+  group_by(term) %>%
+  slice_max(abs(contr), n = 10)
+
+
+## contrast
+
+
+dat_con_rsa <-
+  d_rsa %>%
+  filter(subject %in% subjs_wave1, session %in% c("baseline", "proactive"), wave == "wave1", term %in% models) %>%
+  pivot_wider(
+    id_cols = c("region_hemi", "network", "subject", "wave", "term", "ttype_subset", "roiset", "region", "hemi"),
+    names_from = "session",
+    values_from = "b"
+  ) %>%
+  group_by(wave, term, ttype_subset, region, hemi, region_hemi) %>%
+  mutate(b = baseline - proactive) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b)$p.value,
+    b = mean(b)
+  ) %>%
+  left_join(select(d_sum_rsa, wave, term, ttype_subset, region_hemi, p_fdr)) %>%
+  mutate(is_sig = p_fdr < 0.05) %>%
+  group_by(term, ttype_subset, is_sig) %>%
+  mutate(p_contr_fdr = p.adjust(p, "fdr"), p_contr_fdr = ifelse(is_sig, p_contr_fdr, NA)) %>%
+  ungroup
+
+
+dat_con_rsa %>%
+  ggplot() +
+  geom_brain(
+    #aes(fill = ifelse(abs(t_stat) > 2, t_stat, NA)),
+    aes(
+      fill = ifelse(
+        (ttype_subset == "bias" & p_contr_fdr < 0.05) | (ttype_subset == "pc50" & is_sig),
+        t_stat, NA
+        )
+      ),
+    atlas = atlas,
+    position = position_brain(. ~ side + hemi)
+    ) +
+  scale_fill_continuous_diverging(palette = "BlueRed3") +
+  theme_surface +
+  facet_grid(
+    rows = vars(term), cols = vars(ttype_subset),
+    labeller =
+      labeller(
+        ttype_subset = c(bias = "biased stimuli", pc50 = "unbiased stimuli (unthresholded)"),
+        term = c(target = "targ", distractor = "distr", incongruency = "incon")
+      )
+    ) +
+  labs(fill = expression("t | p"[FDR]<0.05)) +
+  guides(fill = guide_colorbar(title.position = "top"))
+
+ggsave(here("out", "ohbm", "contrast_rsa.pdf"), height = 1*3, width = 3*3, dev = "pdf")
+
+
+## ROIs
+
+
+### MD
+
+d_rsa_md <-  d_rsa %>%
+  filter(
+    subject %in% subjs_wave1, session %in% c("baseline", "proactive"), wave == "wave1", term %in% models,
+    region %in% md$core
+    )
+
+d_sum_rsa_md <-
+  d_rsa_md %>%
+  group_by(subject, wave, term, ttype_subset, region_hemi) %>%  ## average over session
+  summarize(b = mean(b)) %>%
+  group_by(wave, term, ttype_subset, region_hemi) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b)
+  ) %>%
+  group_by(wave, term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr")) %>%
+  ungroup
+
+dat_con_rsa_md <-
+  d_rsa_md %>%
+  pivot_wider(
+    id_cols = c("subject", "term", "ttype_subset", "region_hemi"),
+    names_from = "session",
+    values_from = "b"
+  ) %>%
+  group_by(term, ttype_subset, region_hemi) %>%
+  mutate(b = baseline - proactive) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b)$p.value,
+    b = mean(b)
+  ) %>%
+  left_join(select(d_sum_rsa_md, term, ttype_subset, region_hemi, p_fdr)) %>%
+  mutate(is_sig = p_fdr < 0.05) %>%
+  group_by(term, ttype_subset, is_sig) %>%
+  mutate(p_contr_fdr = p.adjust(p, "fdr"), p_contr_fdr = ifelse(is_sig, p_contr_fdr, NA))
+
+d_rsa_md %>%
+  filter(ttype_subset == "pc50") %>%
+  ggplot(aes(region_hemi, b)) +
+  stat_summary(fun.data = mean_cl_boot, aes(color = session)) +
+  stat_summary(fun = mean, aes(color = session, group = session), geom = "line") +
+  geom_text(
+    data = dat_con_rsa_md %>% filter(ttype_subset == "pc50") %>% select(term, ttype_subset, region_hemi, p_contr_fdr),
+    aes(y = 0, label = ifelse(p_contr_fdr < 0.05, "*", "")),
+    size = 8
+  ) +
+  facet_wrap(vars(term), ncol = 1, scales = "free_y") +
+  theme(axis.text.x = element_text(angle = 90))
+
+
+
+### visual
+
+d_rsa_vis <-  d_rsa %>%
+  filter(
+    subject %in% subjs_wave1, session %in% c("baseline", "proactive"), wave == "wave1", term %in% models,
+    region %in% rois_vis
+    ) %>%
+  group_by(subject, session, wave, term, ttype_subset, region) %>%
+  summarize(b = mean(b))
+
+d_sum_rsa_vis <-
+  d_rsa_vis %>%
+  group_by(subject, wave, term, ttype_subset, region) %>%  ## average over session
+  summarize(b = mean(b)) %>%
+  group_by(wave, term, ttype_subset, region) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b)
+  ) %>%
+  group_by(wave, term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr")) %>%
+  ungroup
+
+dat_con_rsa_vis <-
+  d_rsa_vis %>%
+  pivot_wider(
+    id_cols = c("subject", "term", "ttype_subset", "region"),
+    names_from = "session",
+    values_from = "b"
+  ) %>%
+  group_by(term, ttype_subset, region) %>%
+  mutate(b = baseline - proactive) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b)$p.value,
+    b = mean(b)
+  ) %>%
+  left_join(select(d_sum_rsa_vis, term, ttype_subset, region, p_fdr)) %>%
+  mutate(is_sig = p_fdr < 0.05) %>%
+  group_by(term, ttype_subset, is_sig) %>%
+  mutate(p_contr_fdr = p.adjust(p, "fdr"), p_contr_fdr = ifelse(is_sig, p_contr_fdr, NA))
+
+d_rsa_vis %>%
+  filter(ttype_subset == "pc50") %>%
+  ggplot(aes(region, b)) +
+  stat_summary(fun.data = mean_cl_boot, aes(color = session)) +
+  stat_summary(fun = mean, aes(color = session, group = session), geom = "line") +
+  geom_text(
+    data = dat_con_rsa_vis %>% filter(ttype_subset == "pc50") %>% select(term, ttype_subset, region, p_contr_fdr),
+    aes(y = 0, label = ifelse(p_contr_fdr < 0.05, "*", "")),
+    size = 8
+  ) +
+  facet_wrap(vars(term), ncol = 1, scales = "free_y") +
+  theme(axis.text.x = element_text(angle = 90))
+
+```
+
+# cross-session decoding
+
+
+```{r}
+
+## per session
+
+d_dec_subj <- d_dec[
+  ,
+  list(
+    t_stat = t.test(evidence)$statistic,
+    p = t.test(evidence, alternative = "greater")$p.value,
+    b = mean(evidence)
+  ),
+  by = c(
+    "subj", "session", "wave", "variable", "train_stimset", "test_stimset", "region", "hemi", "region_hemi", "network"
+    )
+]
+
+d_dec_subj  <- d_dec_subj %>%
+  filter(train_stimset == test_stimset) %>%
+  select(
+    subject = subj, session, wave, term = variable, ttype_subset = train_stimset, region, hemi,
+    region_hemi, network, t_stat, p, b
+    ) %>%
+  mutate(term = ifelse(term == "congruency", "incongruency", term))
+
+d_sum_dec <-
+  d_dec_subj %>%
+  filter(subject %in% subjs_wave1, session %in% c("reactive", "proactive"), wave == "wave1", term %in% models) %>%
+  #mutate(ttype_subset = "biased + unbiased") %>%
+  group_by(subject, wave, term, ttype_subset, region, hemi, region_hemi) %>%
+  summarize(b = mean(b)) %>%
+  group_by(wave, term, ttype_subset, region, hemi, region_hemi) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b)
+  ) %>%
+  group_by(wave, term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr")) %>%
+  ungroup
+
+
+d_sum_dec %>%
+  ggplot() +
+  geom_brain(
+    aes(fill = ifelse(p_fdr < 0.05, t_stat, NA)),
+    atlas = atlas,
+    position = position_brain(. ~ side + hemi)
+    ) +
+  scale_fill_viridis_c(
+    option = "magma", na.value = "grey",
+    breaks = scales::extended_breaks(4)
+    ) +
+  theme_surface +
+  facet_grid(
+    rows = vars(term),
+    cols = vars(ttype_subset),
+    labeller =
+      labeller(
+        ttype_subset = c(bias = "biased stimuli", pc50 = "unbiased stimuli"),
+        term = c(target = "targ", distractor = "distr", incongruency = "incon")
+      )
+    ) +
+  labs(fill = expression("t | p"[FDR]<0.05)) +
+  guides(fill = guide_colorbar(title.position = "top"))
+
+ggsave(here("out", "ohbm", "maineffects_dec.pdf"), height = 3, width = 9, dev = "pdf")
+
+## contrast
+
+dat_con_dec <-
+  d_dec_subj %>%
+  filter(subject %in% subjs_wave1, session %in% c("reactive", "proactive"), wave == "wave1", term %in% models) %>%
+  pivot_wider(
+    id_cols = c("region_hemi", "network", "subject", "wave", "term", "ttype_subset", "region", "hemi"),
+    names_from = "session",
+    values_from = "b"
+  ) %>%
+  group_by(wave, term, ttype_subset, region, hemi, region_hemi) %>%
+  #mutate(b = baseline/sd(baseline) - proactive/sd(proactive)) %>%
+  mutate(b = reactive - proactive) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b)$p.value,
+    b = mean(b)
+  ) %>%
+  left_join(select(d_sum_dec, wave, term, region_hemi, p_fdr)) %>%
+  mutate(is_sig = p_fdr < 0.05) %>%
+  group_by(term, ttype_subset, is_sig) %>%
+  mutate(p_contr_fdr = p.adjust(p, "fdr"), p_contr_fdr = ifelse(is_sig, p_contr_fdr, NA)) %>%
+  # group_by(term, ttype_subset) %>%
+  # mutate(p_contr_fdr = p.adjust(p, "fdr")) %>%
+  ungroup
+
+
+dat_con_dec %>%
+  filter(ttype_subset == "pc50") %>%
+  ggplot() +
+  geom_brain(
+    #aes(fill = ifelse(abs(t_stat) > 2, t_stat, NA)),
+    aes(
+      fill = ifelse(
+        #p_contr_fdr < 0.05,
+        (ttype_subset == "bias" & p_contr_fdr < 0.05) | (ttype_subset == "pc50" & is_sig),
+        t_stat, NA
+        )
+      ),
+    atlas = atlas,
+    position = position_brain(. ~ side + hemi)
+    ) +
+  scale_fill_continuous_diverging(palette = "BlueRed3") +
+  theme_surface +
+  facet_grid(
+    rows = vars(term), cols = vars(ttype_subset),
+    labeller =
+      labeller(
+        ttype_subset = c(bias = "biased stimuli", pc50 = "unbiased stimuli (unthresholded)"),
+        term = c(target = "targ", distractor = "distr", incongruency = "incon")
+      )
+    ) +
+  labs(fill = expression("t | p"[FDR]<0.05)) +
+  guides(fill = guide_colorbar(title.position = "top")) +
+  theme(legend.position = c(0.5, 0))
+
+ggsave(here("out", "ohbm", "contrast_dec.pdf"), height = 5, width = 5, dev = "pdf")
+
+roi_pvals <- dat_con_dec %>%
+  filter(region %in% c("V1", "V2", "V3")) %>%
+  group_by(term, ttype_subset) %>%
+  mutate(p_contr_fdr = p.adjust(p, "fdr")) %>%
+  select(term, ttype_subset, region_hemi, p_contr_fdr, p)
+
+d_dec_subj %>%
+
+  filter(region %in% c("V1", "V2", "V3")) %>%
+  filter(subject %in% subjs_wave1, session %in% c("reactive", "proactive"), wave == "wave1", term %in% models) %>%
+  full_join(roi_pvals, by = c("term", "region_hemi", "ttype_subset")) %>%
+  filter(ttype_subset == "pc50") %>%
+
+  ggplot(aes(region_hemi, b)) +
+  geom_text(
+    data = roi_pvals %>% filter(ttype_subset == "pc50"),
+    aes(y = 0, label = ifelse(p < 0.05, "*", "")),
+    size = 8
+  ) +
+  stat_summary(fun.data = mean_cl_boot, aes(color = session)) +
+  stat_summary(fun = mean, aes(color = session, group = session), geom = "line") +
+  facet_wrap(vars(term), ncol = 1, scales = "free_y")
+
+roi_pvals <- dat_con_dec %>%
+    filter(region %in% rois_vis) %>%
+  #filter(region %in% c("V1", "V2", "V3", "V4", "V8", "V3A", "V7", "VVC", "VMV1", "VMV2", "VMV3", "LO1", "LO2", "LO3")) %>%
+  #filter(region %in% md$core) %>%
+  #filter(region %in% rois_language, hemi == "left") %>%
+  group_by(term, ttype_subset) %>%
+  mutate(p_contr_fdr = p.adjust(p, "fdr")) %>%
+  select(term, ttype_subset, region_hemi, p_contr_fdr, p)
+
+d_dec_subj %>%
+  filter(region %in% rois_vis) %>%
+  #filter(region %in% c("V2", "V3", "V4", "V8", "V3A", "V7", "VVC", "VMV1", "VMV2", "VMV3", "LO1", "LO2", "LO3")) %>%
+  #filter(region %in% rois_language, hemi == "left") %>%
+  #filter(region %in% md$core) %>%
+  filter(subject %in% subjs_wave1, session %in% c("reactive", "proactive"), wave == "wave1", term %in% models) %>%
+  full_join(roi_pvals, by = c("term", "region_hemi", "ttype_subset")) %>%
+  filter(ttype_subset == "pc50") %>%
+
+  ggplot(aes(region_hemi, b)) +
+  stat_summary(fun.data = mean_cl_boot, aes(color = session)) +
+  stat_summary(fun = mean, aes(color = session, group = session), geom = "line") +
+  geom_text(
+    data = roi_pvals %>% filter(ttype_subset == "pc50"),
+    aes(y = 0, label = ifelse(p < 0.05, "*", "")),
+    size = 8
+  ) +
+  facet_wrap(vars(term), ncol = 1, scales = "free_y") +
+  theme(axis.text.x = element_text(angle = 90))
+
+```
+
+
+```{r}
+
+d_dec_md <-  d_dec_subj %>%
+  filter(
+    subject %in% subjs_wave1, session %in% c("reactive", "proactive"), wave == "wave1", term %in% models,
+    region %in% md$core, ttype_subset == "pc50", hemi == "left"
+    )
+
+d_sum_dec_md <-
+  d_dec_md %>%
+  group_by(subject, wave, term, ttype_subset, region_hemi) %>%  ## average over session
+  summarize(b = mean(b)) %>%
+  group_by(wave, term, ttype_subset, region_hemi) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b)
+  ) %>%
+  group_by(wave, term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr")) %>%
+  ungroup
+
+dat_con_dec_md <-
+  d_dec_md %>%
+  pivot_wider(
+    id_cols = c("subject", "term", "ttype_subset", "region_hemi"),
+    names_from = "session",
+    values_from = "b"
+  ) %>%
+  group_by(term, ttype_subset, region_hemi) %>%
+  mutate(b = reactive - proactive) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b)$p.value,
+    b = mean(b)
+  ) %>%
+  left_join(select(d_sum_dec_md, term, ttype_subset, region_hemi, p_fdr)) %>%
+  mutate(is_sig = p_fdr < 0.05) %>%
+  group_by(term, ttype_subset, is_sig) %>%
+  mutate(p_contr_fdr = p.adjust(p, "fdr"), p_contr_fdr = ifelse(is_sig, p_contr_fdr, 1))
+
+d_dec_md %>%
+  filter(region_hemi %in% c("L_IFJp", "L_8C")) %>%
+  ggplot(aes(term, b)) +
+  stat_summary(fun.data = mean_cl_boot, aes(color = session), geom = "errorbar", width = 1/8, size = 1) +
+  stat_summary(fun = mean, aes(color = session), geom = "point", size = 2) +
+  stat_summary(fun = mean, aes(color = session, group = session), geom = "line") +
+  geom_text(
+    data =
+      dat_con_dec_md %>% filter(ttype_subset == "pc50", region_hemi %in% c("L_IFJp", "L_8C")) %>% 
+      select(term, ttype_subset, region_hemi, p_contr_fdr),
+    aes(y = Inf, label = ifelse(p_contr_fdr < 0.05, "*", "")),
+    hjust = 1,
+    size = 8
+  ) +
+  facet_grid(cols = vars(region_hemi), scales = "free_x") +
+  theme_basic +
+  theme(legend.position = "none", axis.line.y = element_line()) +
+  labs(y = "Mean discriminability (a.u.)", x = NULL)
+
+
+### visual
+
+d_dec_vis <-  d_dec_subj %>%
+  filter(
+    subject %in% subjs_wave1, session %in% c("reactive", "proactive"), wave == "wave1", term %in% models,
+    region %in% rois_vis
+    ) %>%
+  mutate(region = "V1-V4") %>%
+  group_by(subject, session, wave, term, ttype_subset, region) %>%
+  summarize(b = mean(b))
+
+d_sum_dec_vis <-
+  d_dec_vis %>%
+  group_by(subject, wave, term, ttype_subset, region) %>%  ## average over session
+  summarize(b = mean(b)) %>%
+  group_by(wave, term, ttype_subset, region) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b)
+  ) %>%
+  group_by(wave, term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr")) %>%
+  ungroup
+
+dat_con_dec_vis <-
+  d_dec_vis %>%
+  pivot_wider(
+    id_cols = c("subject", "term", "ttype_subset", "region"),
+    names_from = "session",
+    values_from = "b"
+  ) %>%
+  group_by(term, ttype_subset, region) %>%
+  mutate(b = reactive - proactive) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b)$p.value,
+    b = mean(b)
+  ) %>%
+  left_join(select(d_sum_dec_vis, term, ttype_subset, region, p_fdr)) %>%
+  mutate(is_sig = p_fdr < 0.05) %>%
+  group_by(term, ttype_subset, is_sig) %>%
+  mutate(p_contr_fdr = p.adjust(p, "fdr"), p_contr_fdr = ifelse(is_sig, p_contr_fdr, NA))
+
+d_dec_md1 <- d_dec_md %>% 
+  filter(ttype_subset == "pc50", region_hemi %in% c("L_IFJp", "L_8C")) %>%
+  select(subject, session, wave, term, ttype_subset, region = region_hemi, b)
+
+d4plot <- d_dec_vis %>%
+  full_join(d_dec_md1 %>% select(subject, session, wave, term, ttype_subset, region, b) %>% filter(ttype_subset == "pc50"))
+
+d4plot %>%
+  mutate(term = substr(term, 1, 5), term = ifelse(term == "targe", "targ", term)) %>%
+  ggplot(aes(term, b)) +
+  stat_summary(
+    fun.data = mean_cl_boot, aes(color = session), geom = "errorbar", width = 1/4, size = 1,
+    position = position_dodge(width = 0.5)
+    ) +
+  stat_summary(fun = mean, aes(color = session), geom = "point", size = 2, position = position_dodge(width = 0.5)) +
+  #stat_summary(fun = mean, aes(color = session, group = session), geom = "line") +
+  facet_grid(cols = vars(region), scales = "free_x") +
+  theme_basic +
+  theme(legend.position = "none", axis.line.x = element_line(size = 0.5), axis.text.x = element_text(size = 12)) +
+  labs(y = "Mean discriminability (a.u.)", x = NULL) +
+  coord_flip() +
+  scale_color_manual(values = colors_session) +
+  scale_y_continuous(n.breaks = 3)
+
+ggsave(here("out", "ohbm", "rois_dec.pdf"), height = 2.75, width = 5, dev = "pdf")
+
+```

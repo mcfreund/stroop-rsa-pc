@@ -1,0 +1,680 @@
+---
+title: "decoding: train baseline, test pro, rea --- `r params$suffix`"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 2
+        toc_float: true
+        number_sections: true
+        code_folding: hide
+params:
+  suffix: "__nresamp100__lsall_1rpm__divnormed__demeaned__centered"
+---
+
+# intro
+
+
+```{r setup, results = FALSE, message = FALSE, warning = FALSE}
+
+wave <- "wave1"
+atlas_roi_nm <- "glasser2016__parcel"
+#atlas_roi_nm <- "schaefer2018_17_200__parcel"
+#atlas_roi_nms <- c("glasser2016__superparcel", "glasser2016__parcel", "schaefer2018_17_200__parcel")
+
+if (exists("params")) {
+  suffix <- params$suffix
+} else {
+  suffix <- "__nresamp100__lsall_1rpm__divnormed__demeaned__centered"
+}
+
+## libraries
+
+library(here)
+library(knitr)
+library(ggplot2)
+library(mfutils)
+library(ggseg)
+library(ggsegExtra)
+library(ggsegSchaefer)
+library(ggsegGlasser)
+library(broom)
+library(parallel)
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(brms)
+
+source(here("src", "stroop-rsa-pc.R"))
+
+## settings
+theme_set(theme_bw(base_size = 14))
+
+theme_surface <- list(
+  theme(
+    axis.text = element_blank(), panel.grid = element_blank(), panel.border = element_blank(),
+    axis.ticks = element_blank(), legend.position = c(0.5, 0.5), legend.title = element_text(size = 5), 
+    legend.background = element_blank(), legend.text = element_text(size = 5), legend.direction = "horizontal",
+    legend.key.height = unit(1/5, "cm"), legend.key.width = unit(1/4, "cm"),
+    strip.background = element_blank()
+  )
+)
+theme_basic <- list(
+  theme(
+    axis.text = element_text(size = 6),
+    panel.grid = element_blank(), 
+    panel.border = element_blank(),
+    legend.background = element_blank(),
+    strip.background = element_blank()
+  )
+)
+
+colors_model <- c(
+  target = "#1b9e77",
+  congruency = "#d95f02",
+  distractor = "#7570b3"
+)
+
+colors_session <- c(
+  baseline = "#1f78b4",
+  proactive = "#b2df8a",
+  reactive = "#a6cee3"
+)
+
+
+## constants
+
+stimsets <- c("bias", "pc50", "biaspc50")
+models <- c("target", "distractor", "congruency")
+path_data <- here("out", "decoding")
+subjdirs <- list.dirs(path_data)[-1]
+path_data <- here("out", "decoding")
+fname <- paste0("trainbaseline__", wave, "__svm__", atlas_roi_nm, suffix, "_summarized.RDS")
+does_exist <- file.exists(file.path(subjdirs, fname))
+subjdirs <- subjdirs[does_exist]
+subjs <- gsub(".*decoding/", "", subjdirs)
+
+subset_nms <- c("bias", "pc50", "biaspc50")
+names(ttypes)[names(ttypes) == "all"] <- "biaspc50"
+
+## data
+l <- mclapply(subjdirs, function(x) readRDS(file.path(x, fname)), mc.cores = 20)
+d <- rbindlist(l)
+
+## add behavior:
+beh <- fread(here("in", "behavior-and-events_stroop_2022-05-27_nice.csv"))
+beh <- beh %>%
+  group_by(subj, session, wave, run) %>%
+  mutate(trial = trial_num + ifelse(session %in% c("baseline", "proactive"), 108, 120) * (run - 1)) %>%
+  select(wave, session, run, trial, subj, time_target_onset, rt, acc)
+dat <- data.table::merge.data.table(d, beh, by = c("subj", "session", "wave", "trial"), all.x = TRUE)
+stopifnot(nrow(dat) == nrow(d))
+
+## configure atlas:
+
+atlas <- glasser
+atlas$data <- atlas$data %>% filter(region != "H")  ## remove HC from atlas, b/c not in data!
+
+dat[, region := gsub("L_|R_", "", roi)]
+dat[, hemi := ifelse(grepl("L_", roi), "left", "right")]
+dat <- dat[!(region %in% c("10pp") & hemi == "left")]  ## not in glasser ggseg atlas?
+dat[, region_hemi := paste0(toupper(substr(hemi, 1, 1)), "_", region)]
+k <- glasser2016_fsaverage5$key %>% 
+  select(region = parcel, network) %>%
+  mutate(region = gsub("L_|R_", "", region))
+dat[, network := k$network[match(region, k$region)]]
+
+## add test_stimset:
+dat[, test_stimset := ""]
+dat[stimulus %in% ttypes$bias, test_stimset := "bias"]
+dat[stimulus %in% ttypes$pc50, test_stimset := "pc50"]
+
+## subject lists
+
+subjs_table <- as.data.table(table(dat$subj, dat$wave, dat$session) > 0)
+names(subjs_table) <- c("subj", "wave", "session", "has_data")
+subjs_wave1 <- subjs_table %>%
+  filter(wave == "wave1") %>%
+  group_by(subj) %>%
+  summarize(alldat = sum(has_data) == 3) %>%
+  filter(alldat) %>%
+  pull(subj)
+subjs_wave2 <- subjs_table %>%
+  group_by(subj) %>%
+  summarize(alldat = sum(has_data) == 6) %>%
+  filter(alldat) %>%
+  pull(subj)
+
+
+```
+
+
+# brains: summary statistics
+
+
+```{r}
+
+## per session
+
+dat_subj <- dat[
+  ,
+  list(
+    t_stat = t.test(evidence)$statistic,
+    p = t.test(evidence, alternative = "greater")$p.value,
+    b = mean(evidence)
+  ),
+  by = c(
+    "subj", "session", "wave", "variable", "train_stimset", "test_stimset", "region", "hemi", "region_hemi", "network"
+    )
+]
+
+dat_group <- dat_subj[
+  ,
+  list(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b)
+  ),
+  by = c("session", "wave", "variable", "train_stimset", "test_stimset", "region", "hemi", "region_hemi", "network")
+]
+
+dat_group[,
+  p_fdr := p.adjust(p, "fdr"),
+  by = c("session", "wave", "variable", "train_stimset", "test_stimset", "region", "hemi", "region_hemi", "network")
+]
+
+
+## average over session
+
+dat_subj_marg <- dat_subj[
+  ,
+  list(b = mean(b)),
+  by = c(
+    "subj", "wave", "variable", "train_stimset", "test_stimset", "region", "hemi", "region_hemi", "network"
+    )
+]
+
+dat_group_marg <- dat_subj_marg[
+  ,
+  list(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b)
+  ),
+  by = c("wave", "variable", "train_stimset", "test_stimset", "region", "hemi", "region_hemi", "network")
+]
+
+dat_group_marg[,
+  p_fdr := p.adjust(p, "fdr"),
+  by = c("wave", "variable", "train_stimset", "test_stimset", "region", "hemi", "region_hemi", "network")
+]
+
+
+
+## contrast across session
+
+dat_subj_cont <- dat_subj  %>%
+  select(-t_stat, -p) %>%
+  pivot_wider(
+      id_cols =
+        c("subj", "wave", "variable", "train_stimset", "test_stimset", "region", "hemi", "region_hemi", "network"),
+      names_from = "session",
+      values_from = "b"
+    ) %>%
+    mutate(pr = proactive - reactive) %>%
+    as.data.table
+
+dat_group_cont <- dat_subj_cont[
+  ,
+  list(
+    t_stat = t.test(pr)$statistic,
+    p = t.test(pr)$p.value,
+    b = mean(pr)
+  ),
+  by = c("wave", "variable", "train_stimset", "test_stimset", "region", "hemi", "region_hemi", "network")
+]
+
+dat_group_cont[,
+  p_fdr := p.adjust(p, "fdr"),
+  by = c("wave", "variable", "train_stimset", "test_stimset", "region", "hemi", "region_hemi", "network")
+]
+
+
+# dat_group_cont[p < 0.05 & variable == "target" & train_stimset == "bias" & test_stimset == "bias" & t_stat > 0]
+# dat_group_cont[p < 0.05 & variable == "target" & train_stimset == "bias" & test_stimset == "bias" & t_stat < 0]
+
+# dat_group_cont[p < 0.05 & variable == "distractor" & train_stimset == "bias" & test_stimset == "bias" & t_stat > 0]
+# dat_group_cont[p < 0.05 & variable == "distractor" & train_stimset == "bias" & test_stimset == "bias" & t_stat < 0]
+
+# dat_group[region_hemi == "L_9-46d" & variable == "distractor" & train_stimset == "pc50" & test_stimset == "pc50"]
+# dat_group[region_hemi == "L_IP0" & variable == "distractor" & train_stimset == "pc50" & test_stimset == "pc50"]
+
+# dat_group[region_hemi == "L_9-46d" & variable == "distractor" & train_stimset == "pc50" & test_stimset == "pc50"]
+# dat_group[region_hemi == "L_IP0" & variable == "distractor" & train_stimset == "pc50" & test_stimset == "pc50"]
+
+```
+
+## per session
+
+```{r message = FALSE, results = "asis"}
+
+for (stimset in stimsets) {
+
+  cat(sprintf("\n\n### %s\n", stimset))
+
+  for (model in models) {
+
+    if (stimset == "biaspc50") {
+      if (model != "congruency") next
+      test_stimset_nm <- c("bias", "pc50")
+    } else {
+      test_stimset_nm <- stimset
+    }
+
+    p <-
+      dat_group %>%
+      filter(variable == model, train_stimset == stimset, test_stimset %in% test_stimset_nm) %>%
+      ggplot() +
+      geom_brain(
+        aes(fill = ifelse(p_fdr < 0.05, t_stat, NA)),
+        atlas = atlas,
+        position = position_brain(. ~ side + hemi)
+        ) +
+      scale_fill_viridis_c(
+        option = "magma", na.value = "grey",
+        breaks = scales::extended_breaks(4)
+        ) +
+      theme_surface +
+      facet_grid(rows = vars(session)) +
+      labs(title = paste0(model, " ", stimset), fill = "t")
+
+    print(p)
+
+  }
+}
+
+```
+
+## average over sessions
+
+
+```{r message = FALSE, results = "asis"}
+
+for (stimset in stimsets) {
+
+  cat(sprintf("\n\n### %s\n", stimset))
+
+  for (model in models) {
+
+    if (stimset == "biaspc50") {
+      if (model != "congruency") next
+      test_stimset_nm <- c("bias", "pc50")
+    } else {
+      test_stimset_nm <- stimset
+    }
+
+    p <-
+      dat_group_marg %>%
+      filter(variable == model, train_stimset == stimset, test_stimset %in% test_stimset_nm) %>%
+      ggplot() +
+      geom_brain(
+        aes(fill = ifelse(p_fdr < 0.05, t_stat, NA)),
+        atlas = atlas,
+        position = position_brain(. ~ side + hemi)
+        ) +
+      scale_fill_viridis_c(
+        option = "magma", na.value = "grey",
+        breaks = scales::extended_breaks(4)
+        ) +
+      theme_surface +
+      labs(title = paste0(model, " ", stimset), fill = "t")
+
+    print(p)
+
+  }
+}
+
+```
+
+
+
+## contrast across sessions
+
+
+```{r message = FALSE, results = "asis"}
+
+for (stimset in stimsets) {
+
+  cat(sprintf("\n\n### %s\n", stimset))
+
+  for (model in models) {
+
+    if (stimset == "biaspc50") {
+      if (model != "congruency") next
+      #test_stimset_nm <- c("bias", "pc50")
+      test_stimset_nm <- "pc50"
+    } else {
+      test_stimset_nm <- stimset
+    }
+
+    rois_sig <- dat_group_marg[
+      p_fdr < 0.05 & variable == model & train_stimset == stimset & test_stimset == test_stimset_nm,
+      region_hemi
+      ]
+
+    p <-
+      dat_group_cont %>%
+      filter(variable == model, train_stimset == stimset, test_stimset %in% test_stimset_nm) %>%
+      ggplot() +
+      geom_brain(
+        aes(fill = ifelse(p < 0.05 & region_hemi %in% rois_sig, t_stat, NA)),
+        atlas = atlas,
+        position = position_brain(. ~ side + hemi)
+        ) +
+      scale_fill_viridis_c(
+        option = "magma", na.value = "grey",
+        breaks = scales::extended_breaks(4)
+        ) +
+      theme_surface +
+      labs(title = paste0(model, " ", stimset), fill = "t")
+
+    print(p)
+
+  }
+}
+
+```
+
+
+# brains: HLMs
+
+```{r}
+
+path_name <- paste0("trainbaseline__", wave, "__svm__", atlas_roi_nm, suffix, "_summarized")
+paths <- here("out", "decoding", "_group", path_name, paste0(models, "_pc50"))
+files <- list.files(paths, full.names = TRUE)
+res <- lapply(files, 
+  function(filename, hyps) {
+    x <- readRDS(filename)
+    hypothesis(x, hyps)
+  },
+  hyps = c("sessionproactive > 0", "sessionreactive > 0", "sessionproactive - sessionreactive = 0")
+)
+names(res) <- paste0(
+  gsub("(.*)(L_.*|R_.*)", "\\2", files), 
+  "__",
+  gsub("(.*)(target|distractor|congruency)(.*)", "\\2", files)
+)
+hyps <- res %>%
+  lapply("[[", "hypothesis") %>%
+  lapply(as.data.table) %>%
+  rbindlist(idcol = "id") %>%
+  separate(id, c("roi", "model"), sep = "__")
+
+hyps[Hypothesis == "(sessionproactive) > 0", Hypothesis := "proactive"]
+hyps[Hypothesis == "(sessionreactive) > 0", Hypothesis := "reactive"]
+hyps[Hypothesis == "(sessionproactive-sessionreactive) = 0", Hypothesis := "p-r"]
+
+hyps %>%
+  filter(Hypothesis %in% c("proactive", "reactive")) %>%
+  ggplot(aes(roi, Estimate, fill = Hypothesis)) +
+  geom_col(position = position_dodge(width = 1/2), width = 0.5) +
+  geom_errorbar(aes(ymin = CI.Lower, ymax = CI.Upper), position = position_dodge(width = 1/2), width = 0.1) +
+  facet_grid(cols = vars(model)) +
+  scale_fill_manual(values = colors_session) +
+  coord_flip() +
+  labs("Proactive and Reactive sessions")
+ggsave("main_effects.pdf", height = 12, width = 8, dev = "pdf")
+
+hyps %>%
+  filter(Hypothesis %in% c("p-r")) %>%
+  ggplot(aes(roi, Estimate)) +
+  geom_col(width = 0.5) +
+  geom_errorbar(aes(ymin = CI.Lower, ymax = CI.Upper), width = 1/3) +
+  facet_grid(cols = vars(model)) +
+  coord_flip() +
+  labs("Proactive - Reactive")
+ggsave("contrast.pdf", height = 12, width = 8, dev = "pdf")
+
+```
+
+
+
+## per session
+
+
+
+## contrasts
+
+
+## controlling for order
+
+
+
+# Correlation to single-session RSA
+
+## brains per model*
+
+# ROI profiles: HLM
+
+## per session
+
+## contrasts
+
+
+
+
+
+
+
+
+
+
+
+
+# ROI profiles
+
+## MD regions
+
+
+```{r message = FALSE, results = "asis"}
+
+dat_md <- dat_subj %>% filter(region %in% md$core, test_stimset == "pc50", train_stimset == "pc50")
+
+dat_md_sorted <- dat_md %>%
+  filter(wave == "wave1", session == "proactive") %>%
+  group_by(variable, train_stimset, region_hemi) %>%
+  summarize(b = mean(b)) %>%
+  group_by(variable, train_stimset) %>%
+  arrange(-b)
+
+for (model in models) {
+
+  p <- dat_md %>%
+
+    filter(variable == model) %>%
+    mutate(
+      region_hemi = paste0(toupper(substr(hemi, 1, 1)), "_", region),
+      region_hemi = factor(
+        region_hemi,
+        levels = dat_md_sorted %>% filter(variable == model) %>% pull(region_hemi)
+        )
+    ) %>%
+
+    ggplot(aes(region_hemi, b, color = session)) +
+    geom_hline(yintercept = 0) +
+    stat_summary(fun.data = mean_cl_boot, geom = "errorbar", width = 0.25, size = 1, alpha = 0.5) +
+    stat_summary(fun = mean, geom = "line", aes(group = session), size = 1.5) +
+
+    scale_color_manual(values = colors_session) +
+    theme_basic +
+    theme(
+      legend.position = c(0.90, 0.5),
+      axis.text.x = element_text(angle = 45)
+      ) +
+    facet_grid(rows = vars(wave)) +
+
+    labs(
+      title = paste0(model, " pc50"), x = "core MD region", y = "mean RSA model fit", color = NULL,
+      caption = "regions sorted by mean coef in baseline wave1"
+      )
+
+  print(p)
+
+}
+
+
+```
+
+
+## Visual1 regions
+
+
+```{r message = FALSE, results = "asis"}
+
+dat_vis <- dat_subj %>% filter(test_stimset == "pc50", train_stimset == "pc50", network %in% c("Visual1"))
+dat_vis_sorted <- dat_vis %>%
+  filter(wave == "wave1", session == "proactive") %>%
+  group_by(variable, train_stimset, region_hemi) %>%
+  summarize(b = mean(b)) %>%
+  group_by(variable, train_stimset) %>%
+  arrange(-b)
+
+for (model in models) {
+
+    p <- dat_vis %>%
+
+      filter(variable == model) %>%
+      mutate(
+        region_hemi = paste0(toupper(substr(hemi, 1, 1)), "_", region),
+        region_hemi = factor(
+          region_hemi,
+          levels = dat_vis_sorted %>% filter(variable == model) %>% pull(region_hemi)
+          )
+      ) %>%
+
+      ggplot(aes(region_hemi, b, color = session)) +
+      geom_hline(yintercept = 0) +
+      stat_summary(fun.data = mean_cl_boot, geom = "errorbar", width = 0.25, size = 1, alpha = 0.5) +
+      stat_summary(fun = mean, geom = "line", aes(group = session), size = 1.5) +
+
+      scale_color_manual(values = colors_session) +
+      theme_basic +
+      theme(
+        legend.position = c(0.90, 0.5),
+        axis.text.x = element_text(angle = 45)
+        ) +
+      facet_grid(rows = vars(wave)) +
+
+      labs(
+        title = paste0(model, " pc50"), x = "Visual1-network region", y = "mean RSA model fit", color = NULL,
+        caption = "regions sorted by mean coef in baseline wave1"
+       )
+
+    print(p)
+
+}
+
+```
+
+
+## Visual2 regions
+
+```{r message = FALSE, results = "asis"}
+
+dat_vis <- dat_subj %>% filter(test_stimset == "pc50", train_stimset == "pc50", network %in% c("Visual2"))
+dat_vis_sorted <- dat_vis %>%
+  filter(wave == "wave1", session == "proactive") %>%
+  group_by(variable, train_stimset, region_hemi) %>%
+  summarize(b = mean(b)) %>%
+  group_by(variable, train_stimset) %>%
+  arrange(-b)
+
+for (model in models) {
+
+    p <- dat_vis %>%
+
+      filter(variable == model) %>%
+      mutate(
+        region_hemi = paste0(toupper(substr(hemi, 1, 1)), "_", region),
+        region_hemi = factor(
+          region_hemi,
+          levels = dat_vis_sorted %>% filter(variable == model) %>% pull(region_hemi)
+          )
+      ) %>%
+
+      ggplot(aes(region_hemi, b, color = session)) +
+      geom_hline(yintercept = 0) +
+      stat_summary(fun.data = mean_cl_boot, geom = "errorbar", width = 0.25, size = 1, alpha = 0.5) +
+      stat_summary(fun = mean, geom = "line", aes(group = session), size = 1.5) +
+
+      scale_color_manual(values = colors_session) +
+      theme_basic +
+      theme(
+        legend.position = c(0.90, 0.5),
+        axis.text.x = element_text(angle = 45)
+        ) +
+      facet_grid(rows = vars(wave)) +
+
+      labs(
+        title = paste0(model, " pc50"), x = "Visual2-network region", y = "mean RSA model fit", color = NULL,
+        caption = "regions sorted by mean coef in baseline wave1"
+       )
+
+    print(p)
+
+}
+
+```
+
+
+## "Language" regions
+
+
+```{r message = FALSE, results = "asis"}
+
+dat_lang <- dat_subj %>% filter(test_stimset == "pc50", train_stimset == "pc50", network %in% "Language")
+dat_lang_sorted <- dat_lang %>%
+  filter(wave == "wave1", session == "proactive") %>%
+  group_by(variable, train_stimset, region_hemi) %>%
+  summarize(b = mean(b)) %>%
+  group_by(variable, train_stimset) %>%
+  arrange(-b)
+
+for (model in models) {
+
+    p <- dat_lang %>%
+
+      filter(variable == model) %>%
+      mutate(
+        region_hemi = factor(
+          region_hemi,
+          levels = dat_lang_sorted %>% filter(variable == model) %>% pull(region_hemi)
+          )
+      ) %>%
+
+      ggplot(aes(region_hemi, b, color = session)) +
+      geom_hline(yintercept = 0) +
+      stat_summary(fun.data = mean_cl_boot, geom = "errorbar", width = 0.25, size = 1, alpha = 0.5) +
+      stat_summary(fun = mean, geom = "line", aes(group = session), size = 1.5) +
+
+      scale_color_manual(values = colors_session) +
+      theme_basic +
+      theme(
+        legend.position = c(0.90, 0.5),
+        axis.text.x = element_text(angle = 45)
+        ) +
+      facet_grid(rows = vars(wave)) +
+
+      labs(
+        title = paste0(model, " pc50"), x = "'Language' regions", y = "mean RSA model fit", color = NULL,
+        caption = "regions sorted by mean coef in baseline wave1"
+       )
+
+    print(p)
+
+}
+
+```
+
+
+<div class="tocify-extend-page" data-unique="tocify-extend-page" style="height: 0;"></div>

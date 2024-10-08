@@ -10,8 +10,8 @@ if (interactive()) {  ##  for dev:
     roi_col <- "superparcel"
     subjlist <- "wave1"
     dowave <- 1
-    n_cores <- 8
-    n_resamples <- 1E2
+    n_cores <- 14
+    n_resamples <- 100
     decoder <- "svm"
     center <- TRUE
     detrend <- FALSE
@@ -31,7 +31,7 @@ if (interactive()) {  ##  for dev:
     parser$add_argument("roi_col", type = "character")
     parser$add_argument("subjlist", type = "character")
     parser$add_argument("--space", type = "character", default = "fsaverage5")
-    parser$add_argument("--n_cores", type = "double", default = 28)
+    parser$add_argument("--n_cores", type = "double", default = 20)
     parser$add_argument("--n_resamples", type = "double", default = 100)
     parser$add_argument("--decoder", type = "character", default = "svm")
     parser$add_argument("--dowave", type = "double", default = 1)
@@ -111,7 +111,7 @@ suffix_demean <- switch(demean + 1, "", "__demeaned")
 suffix_center <- switch(center + 1, "", "__centered")
 suffix_detrend <- switch(detrend + 1, "", paste0("__detrended", degree))
 fname <- paste0(
-    "trainbaseline__", waves, "__", decoder, "__", atlas_name, "__", roi_col, "__nresamp", n_resamples, "__", glmname, 
+    "trainbaseline__", waves, "__", decoder, "__", atlas_name, "__", roi_col, "__nresamp", n_resamples, "__", glmname,
     suffix_divnorm, suffix_demean, suffix_center, suffix_detrend, 
     ".RDS"
     )
@@ -153,10 +153,12 @@ g <- unique(input$g)
 time_beg <- Sys.time()
 cl <- makeCluster(n_cores, type = "FORK")
 registerDoParallel(cl)
-out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
+out <- foreach(ii = seq_along(g), .inorder = FALSE, .combine = c) %dopar% {
+#for (ii in seq_along(g)) {
 
     id <- g[ii]
     inputs <- input[g == id]
+    print(noquote(paste0("subject ", g[ii])))
 
     res <- enlist(paste0(id, "__", rois))
     for (roi_i in seq_along(rois)) {
@@ -167,15 +169,16 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
             for (run_nm in runs) {
                 sesrun <- paste0(session_nm, "_", run_nm)
                 nms <- inputs[roi == rois[roi_i] & run == run_nm & session == session_nm, c("file_name", "dset_name")]
-                B[[sesrun]] <- read_dset(nms$file_name, nms$dset_name)
-                # B[[sesrun]] <- tryCatch(
-                #     mean(read_dset(nms$file_name, nms$dset_name)),
-                #     error = "could not read"
-                # )
+                #B[[sesrun]] <- read_dset(nms$file_name, nms$dset_name)
+                B[[sesrun]] <- tryCatch(
+                    read_dset(nms$file_name, nms$dset_name),
+                    error = "could not read"
+                )
             }
         }
-    #     # bad <- lapply(B, function(x) identical(x, "could not read"))
-    #     # if (any(bad)) next
+
+        bad <- vapply(B, function(x) identical(x, "could not read"), logical(1))
+        if (any(bad)) next
 
         ## subset vertices to common "good" set:
         n_vert <- nrow(B[[1]])
@@ -230,7 +233,7 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
         B_train <- B_prep[c("baseline_run1", "baseline_run2")]
         names(B_train) <- c("run1", "run2")
         b <- enlist(names(stimsets))
-        for (stimset in names(stimsets)) {     
+        for (stimset in names(stimsets)) {
             b[[stimset]] <- enlist(variables)
             for (variable in variables) {
                 ## skip bad combo:
@@ -249,7 +252,12 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
         }
 
         ## resample trial indices for training models:
-        if (roi_i == 1) {  ## same order for all ROIs:
+        ## control flow based on whether idx is in environment.
+        ## could also check if roi_i == 1.
+        ## however that would depend upon successful loading of data from roi_i == 1.
+        ## so instead, use presencen of idx. 
+        ## NB: make sure to remove idx and derivative objects (idx_i) from environment after subject completed.
+        if (!exists("idx")) {  ## same order for all ROIs:
             idx <- enlist(names(stimsets))
             for (stimset in names(stimsets)) {  
                 idx[[stimset]] <- enlist(variables)
@@ -289,7 +297,7 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
                             colnames(idx_rest) <- trial_labels[trial_idxrest]
                             ## finally, store:
                             idx[[stimset]][[variable]] <- cbind(idx6, idx3, idx_rest)
-                        }    
+                        }
                     }
 
                 }
@@ -319,7 +327,7 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
 
                     ## get test data:
                     testdata <- cbind(
-                        B_prep[[paste0(test_session, "_run1")]], 
+                        B_prep[[paste0(test_session, "_run1")]],
                         B_prep[[paste0(test_session, "_run2")]]
                     )
                     if (variable == "congruency") {
@@ -373,19 +381,27 @@ out <- foreach(ii = seq_along(g), .inorder = FALSE) %dopar% {
 
         preds <- preds[lengths(preds) > 0]
         res[[roi_i]] <- rbindlist(preds, fill = TRUE)
-        B
 
-        print(roi_i)
+        cat(noquote(paste0(roi_i, " ")))
 
     }  ## end ROI loop
 
-    res_dt <- rbindlist(res, id = "roi")
+    rm(idx, idx_i)  ## remove these from env for next subject for checks based on these objects.
 
-    ## save:
+    if (any(!lengths(res) > 0)) {  ## only write file if complete
 
-    dir_out <- here("out", "decoding", unique(inputs$subj))
-    dir.create(dir_out, recursive = TRUE, showWarnings = FALSE)
-    saveRDS(res_dt, here("out", "decoding", unique(inputs$subj), fname))
+        return(unique(inputs$subj))
+
+    } else {
+        res_dt <- rbindlist(res, id = "roi")
+
+        ## save:
+
+        dir_out <- here("out", "decoding", unique(inputs$subj))
+        dir.create(dir_out, recursive = TRUE, showWarnings = FALSE)
+        saveRDS(res_dt, here("out", "decoding", unique(inputs$subj), fname))
+
+    }
 
 }
 stopCluster(cl)

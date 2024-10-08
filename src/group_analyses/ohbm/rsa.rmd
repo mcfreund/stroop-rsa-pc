@@ -1,0 +1,1005 @@
+---
+title: "single-session RSA"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 2
+        toc_float: true
+        number_sections: true
+        code_folding: hide
+---
+
+# intro
+
+
+```{r setup, results = FALSE, message = FALSE, warning = FALSE}
+
+## libraries ----
+
+library(here)
+library(data.table)
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(mfutils)
+library(ggseg)
+library(ggsegExtra)
+library(ggsegSchaefer)
+library(ggsegGlasser)
+library(broom)
+
+source(here("src", "stroop-rsa-pc.R"))
+
+## settings, params ----
+
+opts_chunk$set(echo = TRUE, out.width = "100%")
+theme_set(theme_bw(base_size = 14))
+
+theme_surface <- list(
+  theme(
+    axis.text = element_blank(), panel.grid = element_blank(), panel.border = element_blank(),
+    axis.ticks = element_blank(), legend.position = c(0.5, 2/3), legend.title = element_text(size = 5), 
+    legend.background = element_blank(), legend.text = element_text(size = 5), legend.direction = "horizontal",
+    legend.key.height = unit(1/5, "cm"), legend.key.width = unit(1/4, "cm"),
+    strip.background = element_blank()
+  )
+)
+theme_basic <- list(
+  theme(
+    axis.text = element_text(size = 6),
+    panel.grid = element_blank(), 
+    panel.border = element_blank(),
+    legend.background = element_blank(),
+    strip.background = element_blank()
+  )
+)
+
+colors_model <- c(
+  target = "#1b9e77",
+  incongruency = "#d95f02",
+  distractor = "#7570b3"
+)
+
+colors_session <- c(
+  baseline = "#1f78b4",
+  proactive = "#b2df8a",
+  reactive = "#a6cee3"
+)
+
+
+## constants ----
+
+models2plot <- c("intercept", "incongruency", "distractor", "target")
+subjlists <- combo_paste(sessions, "_", waves)
+seswaves <- subjlists
+glmname <- "lsall_1rpm"
+measure <- "crcor"
+prewh <- "none"
+ttype_subsets <- c("pc50", "bias")
+roisets <- c("glasser2016_parcel")
+
+
+## data ----
+
+## read regression weights:
+
+dat <- enlist(combo_paste(roisets, ttype_subsets, subjlists))
+for (roiset in roisets) {
+  for (ttype_subset in ttype_subsets) {
+    for (subjlist in subjlists) {
+      fname <- construct_filename_weights(
+          ttype_subset = ttype_subset,
+          measure = measure, 
+          subjlist = subjlist,
+          glmname = glmname, 
+          roiset = roiset,
+          prewh = prewh, 
+          suffix = paste0("__seswave-", subjlist),
+          base_dir = here("out", "weights")
+          )
+
+      d <- fread(fname)
+      d$ttype_subset <- ttype_subset
+      d$roiset <- roiset
+      dat[[paste0(roiset, ttype_subset, subjlist)]] <- d
+    }
+  }
+}
+dat <- rbindlist(dat)
+
+
+md <- list(
+  core = c("p9-46v", "a9-46v", "i6-8", "AVI", "8C", "IFJp", "IP2", "IP1", "PFm", "8BM", "SCEF"),
+  extended = c(
+    "a9-46v", "p10p", "a10p", "11l", "a47r", "p47r", "FOP5", "AVI", "p9-46v", "8C", "IFJp", "6r", "s6-8", "i6-8",
+    "SCEF", "8BM", "a32pr", "d32", "TE1m", "TE1p", "AIP", "IP2", "LIPd", "MIP", "IP1", "PGs", "PFm", "POS2"
+  )
+)
+
+## configure atlas:
+
+atlas <- glasser
+atlas$data <- atlas$data %>% filter(region != "H")  ## remove HC from atlas, b/c not in data!
+
+dat <- dat %>%
+  mutate(
+    region = gsub("L_|R_", "", roi),
+    hemi = ifelse(grepl("L_", roi), "left", "right")
+    )
+dat <- dat %>% filter(!(region %in% c("10pp") & hemi == "left"))  ## not in glasser ggseg atlas?
+dat <- dat %>% mutate(region_hemi = paste0(toupper(substr(hemi, 1, 1)), "_", region))
+k <- glasser2016_fsaverage5$key %>% 
+  select(region = parcel, network) %>%
+  mutate(region = gsub("L_|R_", "", region))
+dat$network <- k$network[match(dat$region, k$region)]
+
+## behavioral data (proactive session)
+
+# fit <- readRDS(here("out", "behav", "m1_ebm_gauss_het.RDS"))
+# beh <- data.table(
+#   subject = rownames(coef(fit)$subj),
+#   stroop = coef(fit)$subj[, "trial_typeincon"]
+#   )
+
+# dat <- dat %>% left_join(beh, by = "subject")
+
+
+## subject lists
+
+subjs_table <- as.data.table(table(dat$subject, dat$wave, dat$session) > 0)
+names(subjs_table) <- c("subj", "wave", "session", "has_data")
+subjs_wave1 <- subjs_table %>% 
+  filter(wave == "wave1") %>% group_by(subj) %>% summarize(alldat = sum(has_data) == 3) %>%
+  filter(alldat) %>% pull(subj)
+subjs_wave2 <- subjs_table %>% 
+  group_by(subj) %>% summarize(alldat = sum(has_data) == 6) %>%
+  filter(alldat) %>% pull(subj)
+
+
+```
+
+
+# brains per session
+
+```{r message = FALSE, results = "asis"}
+
+dat_sum <-
+  dat %>%
+  group_by(wave, session, term, ttype_subset, region, hemi) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b),
+  ) %>%
+  group_by(wave, session, term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr"))
+
+
+for (ttype in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (model in models2plot) {
+
+    p <- dat_sum %>%
+      filter(term == model, ttype_subset == ttype) %>%
+      ungroup %>%
+      ggplot() +
+      geom_brain(
+        aes(fill = ifelse(p_fdr < 0.05, t_stat, NA)),
+        atlas = atlas,
+        position = position_brain(. ~ side + hemi)
+        ) +
+      scale_fill_viridis_c(
+        option = "magma", na.value = "grey",
+        breaks = scales::extended_breaks(4)
+        ) +
+      theme_surface +
+      facet_grid(rows = vars(wave, session)) +
+      labs(title = paste0(model, " ", ttype), fill = "t")
+
+    print(p)
+
+  }
+}
+```
+
+
+# ROI profiles
+
+## MD regions
+
+
+```{r message = FALSE, results = "asis"}
+
+dat_md <- dat %>% filter(region %in% md$core)
+
+dat_md_sorted <- dat_md %>%
+  filter(wave == "wave1", session == "baseline") %>%
+  group_by(term, ttype_subset, region_hemi) %>%
+  summarize(b = mean(b)) %>%
+  group_by(term, ttype_subset) %>%
+  arrange(-b)
+
+for (ttype in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (model in models2plot) {
+
+    p <- dat_md %>%
+
+      filter(term == model, ttype_subset == ttype) %>%
+      mutate(
+        region_hemi = paste0(toupper(substr(hemi, 1, 1)), "_", region),
+        region_hemi = factor(
+          region_hemi,
+          levels = dat_md_sorted %>% filter(term == model, ttype_subset == ttype) %>% pull(region_hemi)
+          )
+      ) %>%
+
+      ggplot(aes(region_hemi, b, color = session)) +
+      geom_hline(yintercept = 0) +
+      stat_summary(fun.data = mean_cl_boot, geom = "errorbar", width = 0.25, size = 1, alpha = 0.5) +
+      stat_summary(fun = mean, geom = "line", aes(group = session), size = 1.5) +
+
+      scale_color_manual(values = colors_session) +
+      theme_basic +
+      theme(
+        legend.position = c(0.90, 0.5),
+        axis.text.x = element_text(angle = 45)
+        ) +
+      facet_grid(rows = vars(wave)) +
+
+      labs(
+        title = paste0(model, " ", ttype), x = "core MD region", y = "mean RSA model fit", color = NULL,
+        caption = "regions sorted by mean coef in baseline wave1"
+        )
+
+    print(p)
+
+  }
+}
+
+```
+
+
+
+## Visual1 regions
+
+
+```{r message = FALSE, results = "asis"}
+
+dat_vis <- dat %>% filter(network %in% c("Visual1"))
+dat_vis_sorted <- dat_vis %>%
+  filter(wave == "wave1", session == "baseline") %>%
+  group_by(term, ttype_subset, region_hemi) %>%
+  summarize(b = mean(b)) %>%
+  group_by(term, ttype_subset) %>%
+  arrange(-b)
+
+for (ttype in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (model in models2plot) {
+
+    p <- dat_vis %>%
+
+      filter(term == model, ttype_subset == ttype) %>%
+      mutate(
+        region_hemi = paste0(toupper(substr(hemi, 1, 1)), "_", region),
+        region_hemi = factor(
+          region_hemi,
+          levels = dat_vis_sorted %>% filter(term == model, ttype_subset == ttype) %>% pull(region_hemi)
+          )
+      ) %>%
+
+      ggplot(aes(region_hemi, b, color = session)) +
+      geom_hline(yintercept = 0) +
+      stat_summary(fun.data = mean_cl_boot, geom = "errorbar", width = 0.25, size = 1, alpha = 0.5) +
+      stat_summary(fun = mean, geom = "line", aes(group = session), size = 1.5) +
+
+      scale_color_manual(values = colors_session) +
+      theme_basic +
+      theme(
+        legend.position = c(0.90, 0.5),
+        axis.text.x = element_text(angle = 45)
+        ) +
+      facet_grid(rows = vars(wave)) +
+
+      labs(
+        title = paste0(model, " ", ttype), x = "Visual1-network region", y = "mean RSA model fit", color = NULL,
+        caption = "regions sorted by mean coef in baseline wave1"
+       )
+
+    print(p)
+
+  }
+}
+
+```
+
+
+
+
+## Visual2 regions
+
+```{r message = FALSE, results = "asis"}
+
+dat_vis <- dat %>% filter(network %in% c("Visual2"))
+dat_vis_sorted <- dat_vis %>%
+  filter(wave == "wave1", session == "baseline") %>%
+  group_by(term, ttype_subset, region_hemi) %>%
+  summarize(b = mean(b)) %>%
+  group_by(term, ttype_subset) %>%
+  arrange(-b)
+
+for (ttype in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (model in models2plot) {
+
+    p <- dat_vis %>%
+
+      filter(term == model, ttype_subset == ttype) %>%
+      mutate(
+        region_hemi = paste0(toupper(substr(hemi, 1, 1)), "_", region),
+        region_hemi = factor(
+          region_hemi,
+          levels = dat_vis_sorted %>% filter(term == model, ttype_subset == ttype) %>% pull(region_hemi)
+          )
+      ) %>%
+
+      ggplot(aes(region_hemi, b, color = session)) +
+      geom_hline(yintercept = 0) +
+      stat_summary(fun.data = mean_cl_boot, geom = "errorbar", width = 0.25, size = 1, alpha = 0.5) +
+      stat_summary(fun = mean, geom = "line", aes(group = session), size = 1.5) +
+
+      scale_color_manual(values = colors_session) +
+      theme_basic +
+      theme(
+        legend.position = c(0.90, 0.5),
+        axis.text.x = element_text(angle = 45)
+        ) +
+      facet_grid(rows = vars(wave)) +
+
+      labs(
+        title = paste0(model, " ", ttype), x = "Visual2-network region", y = "mean RSA model fit", color = NULL,
+        caption = "regions sorted by mean coef in baseline wave1"
+       )
+
+    print(p)
+
+  }
+}
+
+```
+
+
+## "Language" regions
+
+
+```{r message = FALSE, results = "asis"}
+
+dat_lang <- dat %>% filter(network %in% "Language")
+dat_lang_sorted <- dat_lang %>%
+  filter(wave == "wave1", session == "baseline") %>%
+  group_by(term, ttype_subset, region_hemi) %>%
+  summarize(b = mean(b)) %>%
+  group_by(term, ttype_subset) %>%
+  arrange(-b)
+
+for (ttype in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (model in models2plot) {
+
+    p <- dat_lang %>%
+
+      filter(term == model, ttype_subset == ttype) %>%
+      mutate(
+        region_hemi = factor(
+          region_hemi,
+          levels = dat_lang_sorted %>% filter(term == model, ttype_subset == ttype) %>% pull(region_hemi)
+          )
+      ) %>%
+
+      ggplot(aes(region_hemi, b, color = session)) +
+      geom_hline(yintercept = 0) +
+      stat_summary(fun.data = mean_cl_boot, geom = "errorbar", width = 0.25, size = 1, alpha = 0.5) +
+      stat_summary(fun = mean, geom = "line", aes(group = session), size = 1.5) +
+
+      scale_color_manual(values = colors_session) +
+      theme_basic +
+      theme(
+        legend.position = c(0.90, 0.5),
+        axis.text.x = element_text(angle = 45)
+        ) +
+      facet_grid(rows = vars(wave)) +
+
+      labs(
+        title = paste0(model, " ", ttype), x = "'Language' regions", y = "mean RSA model fit", color = NULL,
+        caption = "regions sorted by mean coef in baseline wave1"
+       )
+
+    print(p)
+
+  }
+}
+
+```
+
+
+# Session contrasts
+
+Wave 1, baseline - proactive
+
+```{r message = FALSE, results = "asis"}
+
+dat_sum_bp <-
+  dat %>%
+  filter(subject %in% subjs_wave1, session %in% c("baseline", "proactive"), wave == "wave1") %>%
+  group_by(wave, term, ttype_subset, region_hemi, region, hemi, subject) %>%
+  summarize(b = mean(b)) %>%
+  group_by(wave, term, ttype_subset, region_hemi, region, hemi) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b),
+  ) %>%
+  group_by(wave, term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr"))
+
+dat_con <-
+  dat %>%
+  filter(subject %in% subjs_wave1, session %in% c("baseline", "proactive"), wave == "wave1") %>%
+  pivot_wider(
+    id_cols = c("region_hemi", "network", "subject", "wave", "term", "ttype_subset", "roiset", "region", "hemi"),
+    names_from = "session",
+    values_from = "b"
+  ) %>%
+  mutate(bp = baseline - proactive)
+
+dat_con_sum <- dat_con %>%
+  select(-baseline, -proactive) %>%
+  pivot_longer(cols = c("bp"), names_to = "contrast", values_to = "b") %>%
+  group_by(wave, term, ttype_subset, contrast, region_hemi, region, hemi, network) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b)$p.value,
+    b = mean(b)
+  )
+
+```
+
+
+```{r}
+
+rois_sig <- dat %>%
+  filter(session %in% c("proactive", "baseline"), wave == "wave1") %>%
+  group_by(wave, term, ttype_subset, region_hemi, region, hemi) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b),
+  ) %>%
+  group_by(wave, term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr")) %>%
+  filter(term == "incongruency", ttype_subset == "pc50", p_fdr < 0.05) %>%
+  pull(region_hemi)
+
+rois_sig <- dat_sum_bp %>% 
+  filter(term == "incongruency", ttype_subset == "pc50", p_fdr < 0.05) %>%
+  pull(region_hemi)
+
+rois <- dat_con_sum %>%
+  filter(contrast == "bp", wave == "wave1", term == "incongruency", ttype_subset == "pc50") %>%
+  mutate(p_fdr = p.adjust(p, "fdr")) %>%
+  filter(p_fdr < 0.05) %>%
+  pull(region_hemi) %>%
+  intersect(rois_sig)
+
+
+dat_con_sum %>%
+  filter(contrast == "bp", wave == "wave1", term %in% c("target", "distractor")) %>%
+  group_by(term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr")) %>%
+  filter(p < 0.05, t_stat < 0)
+
+
+dat_con_sum %>% filter(region_hemi == "L_9-46d")
+
+```
+
+## MD
+
+```{r message = FALSE, results = "asis"}
+
+for (ttype in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (model in models2plot) {
+
+    rois_include <-
+      dat_sum_bp %>%
+      filter(p_fdr < 0.05, term == model, ttype_subset == ttype, wave == "wave1") %>%
+      pull(region_hemi)
+
+    p <- dat_con_sum %>%
+
+      filter(term == model, ttype_subset == ttype, region %in% md$core) %>%
+
+      ggplot(aes(region_hemi, t_stat)) +
+      geom_hline(yintercept = c(-2, 2)) +
+      geom_col(aes(fill = ifelse(region_hemi %in% rois_include, "firebrick", "black"))) +
+
+      theme_basic +
+      scale_fill_identity() +
+      theme(
+        legend.position = c(0.90, 0.5),
+        axis.text.x = element_text(angle = 45)
+        ) +
+
+      labs(
+        title = paste0(model, " ", ttype), x = "core MD region", y = "t-stat Bas-Pro contrast", fill = NULL
+        )
+
+    print(p)
+
+  }
+}
+
+```
+
+## Visual 1
+
+```{r message = FALSE, results = "asis"}
+
+for (ttype in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (model in models2plot) {
+
+    rois_include <-
+      dat_sum_bp %>%
+      filter(p_fdr < 0.05, term == model, ttype_subset == ttype, wave == "wave1") %>%
+      pull(region_hemi)
+
+    p <- dat_con_sum %>%
+
+      filter(term == model, ttype_subset == ttype, network == "Visual1") %>%
+
+      ggplot(aes(region_hemi, t_stat)) +
+      geom_hline(yintercept = c(-2, 2)) +
+      geom_col(aes(fill = ifelse(region_hemi %in% rois_include, "firebrick", "black"))) +
+
+      theme_basic +
+      scale_fill_identity() +
+      theme(
+        legend.position = c(0.90, 0.5),
+        axis.text.x = element_text(angle = 45)
+        ) +
+
+      labs(
+        title = paste0(model, " ", ttype), x = "Visual 1", y = "t-stat Bas-Pro contrast", fill = NULL
+        )
+
+    print(p)
+
+  }
+}
+
+```
+
+
+
+## visual 2
+
+
+```{r message = FALSE, results = "asis"}
+
+for (ttype in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (model in models2plot) {
+
+    rois_include <-
+      dat_sum_bp %>%
+      filter(p_fdr < 0.05, term == model, ttype_subset == ttype, wave == "wave1") %>%
+      pull(region_hemi)
+
+    p <- dat_con_sum %>%
+
+      filter(term == model, ttype_subset == ttype, network == "Visual2") %>%
+
+      ggplot(aes(region_hemi, t_stat)) +
+      geom_hline(yintercept = c(-2, 2)) +
+      geom_col(aes(fill = ifelse(region_hemi %in% rois_include, "firebrick", "black"))) +
+
+      theme_basic +
+      scale_fill_identity() +
+      theme(
+        legend.position = c(0.90, 0.5),
+        axis.text.x = element_text(angle = 45)
+        ) +
+
+      labs(
+        title = paste0(model, " ", ttype), x = "Visual 2", y = "t-stat Bas-Pro contrast", fill = NULL
+        )
+
+    print(p)
+
+  }
+}
+
+
+```
+
+
+## 'Language'
+
+
+```{r message = FALSE, results = "asis"}
+
+for (ttype in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (model in models2plot) {
+
+    rois_include <-
+      dat_sum_bp %>%
+      filter(p_fdr < 0.05, term == model, ttype_subset == ttype, wave == "wave1") %>%
+      pull(region_hemi)
+
+    p <- dat_con_sum %>%
+
+      filter(term == model, ttype_subset == ttype, network == "Language") %>%
+
+      ggplot(aes(region_hemi, t_stat)) +
+      geom_hline(yintercept = c(-2, 2)) +
+      geom_col(aes(fill = ifelse(region_hemi %in% rois_include, "firebrick", "black"))) +
+
+      theme_basic +
+      scale_fill_identity() +
+      theme(
+        legend.position = c(0.90, 0.5),
+        axis.text.x = element_text(angle = 45)
+        ) +
+
+      labs(
+        title = paste0(model, " ", ttype), x = "Language", y = "t-stat Bas-Pro contrast", fill = NULL
+        )
+
+    print(p)
+
+  }
+}
+
+```
+
+
+
+## all parcels, sessions, waves
+
+- RSA model fits averaged across sessions per subject (wave 1); list of ROIs surviving FDR correction compiled
+- within surviving regions: compute contrasts between conditions
+- threshold regions with contrast p<0.01
+
+```{r message = FALSE, results = "asis"}
+
+dat_sum_bpr <-
+  dat %>%
+  filter(subject %in% subjs_wave1) %>%
+  group_by(wave, term, ttype_subset, region_hemi, region, hemi, subject) %>%
+  summarize(b = mean(b)) %>%
+  group_by(wave, term, ttype_subset, region_hemi, region, hemi, ) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b),
+  ) %>%
+  group_by(wave, term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr"))
+
+# dat_sum_bpr %>% filter(p_fdr < 0.05, term == "incongruency", ttype_subset == "pc50", wave == "wave1")
+# dat_sum_bpr %>% filter(p_fdr < 0.05, term == "target", ttype_subset == "pc50", wave == "wave1")
+# dat_sum_bpr %>% filter(p_fdr < 0.05, term == "distractor", ttype_subset == "pc50", wave == "wave1")
+
+dat_con <-
+  dat %>%
+  pivot_wider(
+    id_cols = c("region_hemi", "network", "subject", "wave", "term", "ttype_subset", "roiset", "region", "hemi"),
+    names_from = "session",
+    values_from = "b"
+  ) %>%
+  mutate(bp = baseline - proactive, pr = proactive - reactive, br = baseline - reactive)
+
+dat_con_sum <- dat_con %>%
+  filter(!(is.na(bp) | is.na(pr) | is.na(br))) %>%
+  select(-baseline, -proactive, -reactive) %>%
+  pivot_longer(cols = c("bp", "pr", "br"), names_to = "contrast", values_to = "b") %>%
+  group_by(wave, term, ttype_subset, contrast, region_hemi, region, hemi) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b)$p.value,
+    b = mean(b),
+  )
+
+for (ttype in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (model in models2plot) {
+
+    rois_include <-
+      dat_sum_bpr %>%
+      filter(p_fdr < 0.05, term == model, ttype_subset == ttype, wave == "wave1") %>%
+      pull(region_hemi)
+
+    dat_con_sum_i <- dat_con_sum %>%
+      filter(term == model, ttype_subset == ttype) %>%
+      mutate(is_sig = region_hemi %in% rois_include) %>%
+      group_by(contrast, wave, is_sig) %>%
+      mutate(p_fdr = p.adjust(p, "fdr"))
+
+    p <- dat_con_sum_i %>%
+      ungroup %>%
+      ggplot() +
+      geom_brain(
+        aes(fill = ifelse(is_sig & p < 0.01, t_stat, NA)),
+        atlas = atlas,
+        position = position_brain(. ~ side + hemi)
+        ) +
+      scale_fill_viridis_c(
+        option = "magma", na.value = "grey",
+        breaks = scales::extended_breaks(4)
+        ) +
+      theme_surface +
+      facet_grid(rows = vars(wave, contrast)) +
+      labs(title = paste0(model, " ", ttype), fill = "t")
+
+    print(p)
+
+  }
+}
+
+```
+
+
+## all parcels, wave 1
+
+- RSA model fits averaged across sessions per subject (wave 1); list of ROIs surviving FDR correction compiled
+- within surviving regions: compute contrasts between conditions
+- threshold regions with contrast p<0.01
+
+```{r message = FALSE, results = "asis"}
+
+dat_sum_bp <-
+  dat %>%
+  filter(subject %in% subjs_wave1, wave == "wave1", session %in% c("baseline", "proactive")) %>%
+  group_by(term, ttype_subset, region_hemi, region, hemi, subject) %>%
+  summarize(b = mean(b)) %>%
+  group_by(term, ttype_subset, region_hemi, region, hemi) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b) / sd(b),
+  ) %>%
+  group_by(term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr"))
+
+# dat_sum_bpr %>% filter(p_fdr < 0.05, term == "incongruency", ttype_subset == "pc50", wave == "wave1")
+# dat_sum_bpr %>% filter(p_fdr < 0.05, term == "target", ttype_subset == "pc50", wave == "wave1")
+# dat_sum_bpr %>% filter(p_fdr < 0.05, term == "distractor", ttype_subset == "pc50", wave == "wave1")
+
+dat_con <-
+  dat %>%
+  group_by(session, wave, term, ttype_subset, region_hemi, region, hemi) %>%
+  mutate(b = b / sd(b)) %>%
+  pivot_wider(
+    id_cols = c("region_hemi", "network", "subject", "wave", "term", "ttype_subset", "roiset", "region", "hemi"),
+    names_from = "session",
+    values_from = "b"
+  ) %>%
+  mutate(bp = baseline - proactive, pr = proactive - reactive, br = baseline - reactive)
+
+dat_con_sum <- dat_con %>%
+  filter(!(is.na(bp) | is.na(pr) | is.na(br))) %>%
+  select(-baseline, -proactive, -reactive) %>%
+  pivot_longer(cols = c("bp", "pr", "br"), names_to = "contrast", values_to = "b") %>%
+  group_by(wave, term, ttype_subset, contrast, region_hemi, region, hemi) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b)$p.value,
+    b = mean(b)
+  )
+
+for (ttype in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (model in models2plot) {
+
+    rois_include <-
+      dat_sum_bp %>%
+      filter(p_fdr < 0.05, term == model, ttype_subset == ttype) %>%
+      pull(region_hemi)
+
+    dat_con_sum_i <- dat_con_sum %>%
+      filter(term == model, ttype_subset == ttype) %>%
+      mutate(is_sig = region_hemi %in% rois_include) %>%
+      group_by(contrast, wave, is_sig) %>%
+      mutate(p_fdr = p.adjust(p, "fdr"))
+
+    p <- dat_con_sum_i %>%
+      filter(wave == "wave1", contrast == "bp") %>%
+      ungroup %>%
+      ggplot() +
+      geom_brain(
+        aes(fill = ifelse(is_sig & p < 0.05, t_stat, NA)),
+        atlas = atlas,
+        position = position_brain(. ~ side + hemi)
+        ) +
+      scale_fill_viridis_c(
+        option = "magma", na.value = "grey",
+        breaks = scales::extended_breaks(4)
+        ) +
+      #theme_surface +
+      facet_grid(rows = vars(wave, contrast)) +
+      labs(title = paste0(model, " ", ttype), fill = "t")
+
+    print(p)
+
+  }
+}
+
+```
+
+
+## MD regions
+
+### session order plots
+
+```{r message = FALSE, results = "asis"}
+
+
+dat_sum_bp <-
+  dat %>%
+  filter(subject %in% subjs_wave1, session %in% c("baseline", "proactive")) %>%
+  group_by(wave, term, ttype_subset, region_hemi, region, hemi, subject) %>%
+  summarize(b = mean(b)) %>%
+  group_by(wave, term, ttype_subset, region_hemi, region, hemi, ) %>%
+  summarize(
+    t_stat = t.test(b)$statistic,
+    p = t.test(b, alternative = "greater")$p.value,
+    b = mean(b),
+  ) %>%
+  group_by(wave, term, ttype_subset) %>%
+  mutate(p_fdr = p.adjust(p, "fdr"))
+
+dat_bp_md <- dat %>% 
+  filter(session %in% c("baseline", "proactive"), region %in% md$extended) %>%
+  mutate(
+    session_wave = paste0(substr(session, 1, 1), gsub("wave", "", wave)),
+    session_wave = factor(session_wave, levels = c("b1", "p1", "b2", "p2"))
+    )
+
+for (ttype in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (model in models2plot) {
+
+    rois_include <-
+      dat_sum_bp %>%
+      filter(p_fdr < 0.05, term == model, ttype_subset == ttype, wave == "wave1") %>%
+      pull(region_hemi)
+
+    p <-
+      dat_bp_md %>%
+      filter(term == model, ttype_subset == ttype) %>%
+      mutate(is_sig = region_hemi %in% rois_include) %>%
+      ggplot(aes(session_wave, b, color = is_sig)) +
+      geom_hline(yintercept = 0) +
+      stat_summary(fun.data = mean_cl_boot, geom = "errorbar", width = 1/4, size = 0.75) +
+      stat_summary(fun = mean, geom = "line", size = 1, aes(group = roi)) +
+      theme_basic +
+      theme(
+        legend.position = "none",
+        strip.text = element_text(size = 5)
+        ) +
+      facet_wrap(vars(roi), ncol = 14) +
+      scale_color_manual(values = c(`TRUE` = "firebrick2", `FALSE` = "black")) +
+      labs(
+        title = paste0(model, " ", ttype), x = "extended MD region", y = "mean RSA model fit", 
+        color = NULL,
+        caption = "regions in red have sig marginal effect"
+        )
+
+    print(p)
+
+  }
+}
+
+```
+
+
+### regression
+
+
+
+```{r results = "asis"}
+
+
+dat <- as.data.table(dat)
+dat[session == "baseline" & wave == "wave1", session_order := 1]
+dat[session == "proactive" & wave == "wave1", session_order := 2]
+dat[session == "baseline" & wave == "wave2", session_order := 3]
+dat[session == "proactive" & wave == "wave2", session_order := 4]
+
+l <- dat %>%
+  filter(region %in% md$extended) %>%
+  split(interaction(.$region_hemi, .$ttype_subset, .$term))
+res <- lapply(l,
+  function(x) {
+    fit <- lm(b ~ session_order + I(session_order^2) + session, x)
+    as.data.table(tidy(fit))
+  }
+)
+dat_sum_bp_lm <- separate(rbindlist(res, idcol = "id"), "id", c("region_hemi", "ttype", "model"), sep = "\\.")
+dat_sum_bp_lm <- dat_sum_bp_lm %>% rename(lm_term = term, term = model)
+dat_sum_bp_lm[lm_term == "(Intercept)", lm_term := "bas"]
+dat_sum_bp_lm[lm_term == "sessionproactive", lm_term := "pro-bas"]
+dat_sum_bp_lm[lm_term == "session_order", lm_term := "ord"]
+dat_sum_bp_lm[lm_term == "I(session_order^2)", lm_term := "ord^2"]
+
+dat_sum_bp$is_sig <- dat_sum_bp$p_fdr < 0.05
+dat_sum_bp_sub <- dat_sum_bp %>% ungroup %>% select(term, ttype = ttype_subset, region_hemi, is_sig) %>% unique
+dat_sum_bp_sub <- dat_sum_bp_sub %>% mutate(id = paste0(term, ttype, region_hemi))
+dat_sum_bp_lm <- dat_sum_bp_lm %>% mutate(id = paste0(term, ttype, region_hemi))
+dat_sum_bp_lm$is_sig <- dat_sum_bp_sub$is_sig[match(dat_sum_bp_lm$id, dat_sum_bp_sub$id)]
+
+
+for (ttype_nm in ttype_subsets) {
+
+  cat(sprintf("\n\n### %s", ttype))
+
+  for (lm_term_nm in c("pro-bas")) {
+
+    p <- 
+      dat_sum_bp_lm %>%
+      filter(term %in% c("target", "distractor", "incongruency"), ttype == ttype_nm, lm_term == lm_term_nm) %>%
+      ggplot(aes(region_hemi, estimate, color = is_sig, alpha = ifelse(p.value < 0.05, 1, 1/3))) +
+      geom_hline(yintercept = 0) +
+      geom_point() +
+      geom_errorbar(aes(ymin = estimate - std.error*1.96, ymax = estimate + std.error*1.96)) +
+      scale_color_manual(values = c(`TRUE` = "firebrick2", `FALSE` = "black")) +
+      scale_alpha_identity() +
+      facet_grid(cols = vars(term)) +
+      theme_basic +
+      theme(legend.position = "none") +
+      coord_flip() +
+      labs(y = "estimate +/- CI", x = "extended MD parcel", title = paste0(ttype_nm, " ", lm_term_nm))
+
+    print(p)
+
+    dat_sum_bp_lm[is_sig == TRUE & lm_term == lm_term_nm & ttype == ttype_nm & p.value < 0.05][
+      order(statistic), -"id"
+      ] %>%
+      kable %>%
+      print
+
+  }
+}
+
+```
+
+<div class="tocify-extend-page" data-unique="tocify-extend-page" style="height: 0;"></div>

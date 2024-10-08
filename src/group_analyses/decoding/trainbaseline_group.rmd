@@ -1,0 +1,376 @@
+---
+title: "Decoding, train baseline, test pro/rea: group analysis"
+output: 
+    html_document:
+        toc: true
+        toc_depth: 3
+        toc_float: true
+        number_sections: true
+        code_folding: hide
+params:
+    roiset: "glasser2016_parcel"
+---
+
+# intro
+
+
+```{r setup, results = FALSE, message = FALSE, warning = FALSE}
+
+wave <- "wave1"
+atlas_roi_nm <- "schaefer2018_17_200__parcel"
+#atlas_roi_nms <- c("glasser2016__superparcel", "glasser2016__parcel", "schaefer2018_17_200__parcel")
+suffix <- "__nresamp100__lsall_1rpm__divnormed__demeaned"
+
+## libraries
+
+library(here)
+library(data.table)
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(mfutils)
+library(ggseg)
+library(ggsegExtra)
+library(ggsegSchaefer)
+library(ggsegGlasser)
+
+source(here("src", "stroop-rsa-pc.R"))
+
+## settings
+
+opts_chunk$set(echo = TRUE, out.width = "100%")
+theme_set(theme_bw(base_size = 10))
+
+theme_surface <- list(
+  theme(
+    axis.text = element_blank(), panel.grid = element_blank(), panel.border = element_blank(),
+    axis.ticks = element_blank(), legend.position = c(0.5, 0.5), legend.title = element_text(size = 5), 
+    legend.background = element_blank(), legend.text = element_text(size = 5), legend.direction = "horizontal",
+    legend.key.height = unit(1/5, "cm"), legend.key.width = unit(1/4, "cm")
+  )
+)
+
+colors_model <- c(
+  target = "#1b9e77",
+  incongruency = "#d95f02",
+  distractor = "#7570b3"
+)
+
+
+## constants
+
+path_data <- here("out", "decoding")
+subjdirs <- list.dirs(path_data)[-1]
+path_data <- here("out", "decoding")
+fname <- paste0("trainbaseline__", wave, "__svm__", atlas_roi_nm, suffix, "_summarized.RDS")
+does_exist <- file.exists(file.path(subjdirs, fname))
+subjdirs <- subjdirs[does_exist]
+subjs <- gsub(".*decoding/", "", subjdirs)
+
+subset_nms <- c("bias", "pc50", "biaspc50")
+names(ttypes)[names(ttypes) == "all"] <- "biaspc50"
+
+## data
+
+l <- enlist(subjs)
+for (subjdir_i in seq_along(subjdirs)) l[[subjdir_i]] <- readRDS(file.path(subjdirs[subjdir_i], fname))
+d <- rbindlist(l)
+d <- d %>% rename(region = roi)  ## to match ggseg
+
+## add behavior:
+beh <- fread(here("in", "behavior-and-events_stroop_2022-05-27_nice.csv"))
+beh <- beh %>%
+  group_by(subj, session, wave, run) %>%
+  mutate(trial = trial_num + ifelse(session %in% c("baseline", "proactive"), 108, 120) * (run - 1)) %>%
+  select(wave, session, run, trial, subj, time_target_onset, rt, acc)
+dat <- d %>% left_join(beh, by = c("subj", "session", "wave", "trial"))
+stopifnot(nrow(dat) == nrow(d))
+
+```
+
+
+```{r}
+
+dat_pc50 <- dat[train_stimset == "pc50" & stimulus %in% ttypes$pc50]
+dat_pc50_w <- dat_pc50 %>% pivot_wider(names_from = "variable", values_from = "evidence", names_prefix = "evidence_")
+
+dat_pc50[region == "L_dlpfc"] %>%
+  group_by(subj, session, run, variable, congruency) %>%
+  summarize(evidence = mean(evidence)) %>%
+  ggplot(aes(interaction(congruency, run), evidence, color = congruency)) +
+  geom_hline(yintercept = 0) +
+  stat_summary(fun.data = mean_cl_boot) +
+  facet_grid(cols = vars(session))
+
+dat_pc50 %>%
+  group_by(subj, session, variable, region) %>%
+  summarize(evidence = mean(evidence)) %>%
+  ggplot(aes(session, evidence, color = variable)) +
+  geom_hline(yintercept = 0) +
+  stat_summary(fun.data = mean_cl_boot, position = position_dodge(0.5)) +
+  stat_summary(fun = mean, position = position_dodge(0.5), geom = "line", aes(group = variable)) +
+  facet_wrap(vars(region))
+
+dat_pc50 %>%
+  group_by(subj, variable, region, session) %>%
+  summarize(evidence = mean(evidence)) %>%
+  ggplot(aes(region, evidence, color = session)) +
+  geom_hline(yintercept = 0) +
+  stat_summary(fun.data = mean_cl_boot, position = position_dodge(width = 0.5)) +
+  facet_grid(rows = vars(variable))
+## congruency:L_dlpfc, L_vpm, R_ins, R_vpm
+## distr: L_lppc, L_vvis, R_lppc, R_vvis
+## tar: L_dlpfc, L_ifc, L_vvis, R_vpm, R_vvis
+
+dat_pc50 %>%
+  filter(acc == 1) %>%
+  group_by(subj, session, variable, region) %>%
+  summarize(evidence = mean(evidence)) %>%
+  pivot_wider(names_from = session, values_from = evidence) %>%
+  mutate(evidence_diff = proactive - reactive) %>%
+  ggplot(aes(region, evidence_diff)) +
+  geom_hline(yintercept = 0) +
+  stat_summary(fun.data = mean_cl_boot) +
+  facet_grid(rows = vars(variable)) +
+  labs(y = "proactive - reactive")
+
+
+
+dat_pc50[, .(evidence = mean(evidence)), by = c("subj", "session", "variable", "region")] %>%
+  group_by(session, variable, region) %>%
+  summarize(stat = t.test(evidence)$statistic) %>%
+  filter(stat > 2) %>%
+  arrange(-stat)
+
+
+dat_pc50[, .(evidence = mean(evidence)), by = c("subj", "session", "variable", "region")] %>%
+  pivot_wider(names_from = session, values_from = evidence) %>%
+  mutate(evidence = proactive - reactive) %>%
+  group_by(variable, region) %>%
+  summarize(stat = t.test(evidence)$statistic) %>%
+  filter(abs(stat) > 2) %>%
+  arrange(stat) %>%
+  View
+
+
+
+
+library(lme4)
+
+fit <- lmer(
+  evidence ~ session + run + (session | subj) + (session | target),
+  dat_pc50,
+  subset = region == "L_dlpfc" & variable == "congruency"
+  )
+summary(fit)
+
+fit <- lmer(
+  evidence ~ session + (1 | subj),
+  dat_pc50,
+  subset = region == "L_dlpfc" & variable == "distractor"
+  )
+summary(fit)
+
+fit <- lmer(
+  proj ~ session + (1 | subj),
+  dat_pc50,
+  subset = region == "L_vvis" & variable == "target"
+  )
+summary(fit)
+
+
+
+## brain--behavior models
+
+## OLS
+library(broom)
+l <- dat_pc50_w %>% 
+  filter(train_stimset == "pc50", rt > 0, !is.na(rt), acc == 1) %>% 
+  split(interaction(.$subj, .$train_stimset, .$region))
+mods <- l %>%
+  lapply(
+    function(x) {
+      fit <- lm(
+        rt ~ 
+          scale(evidence_congruency):congruency +
+          scale(evidence_target):congruency +
+          scale(evidence_distractor):congruency +
+          scale(mu):congruency +
+          session + congruency,
+        x
+        )
+      as.data.table(tidy(fit))
+    }
+  )
+res <- rbindlist(mods, idcol = "id")
+res <- res %>% separate("id", c("subj", "ttype", "region"), sep = "\\.")
+res <- res %>%
+  group_by(ttype, region, term) %>%
+  summarize(stat = t.test(estimate)$statistic)
+
+
+res %>%
+  filter(!term %in% c("(Intercept)", "congruencyincon"), abs(stat) > 2) %>%
+  filter(grepl("congruencyincon", term)) %>%
+  View
+
+res %>%
+  filter(!term %in% c("(Intercept)", "congruencyincon"), abs(stat) > 2) %>%
+  filter(grepl("congruencycongr", term) & !grepl("mu", term)) %>%
+  View
+
+
+res %>%
+  filter(!term %in% c("(Intercept)", "congruencyincon")) %>%
+  #filter(grepl("LH_DorsAttnB", region)) %>%
+  View
+
+regions <- c(
+  "17Networks_RH_SalVentAttnA_Ins_2",
+  "17Networks_LH_DefaultB_Temp_4",
+  "17Networks_LH_SalVentAttnB_IPL_1",
+  "17Networks_RH_DorsAttnA_TempOcc_1",
+  "17Networks_LH_DorsAttnB_PostC_3",
+  "17Networks_LH_SomMotB_S2_3",
+  "17Networks_LH_SomMotB_Aud_2s",
+  "17Networks_LH_DefaultB_Temp_4",
+  "17Networks_LH_ContB_PFCl_1"
+)
+
+dat_pc50_w %>%
+  filter(train_stimset == "pc50", rt > 0, !is.na(rt), acc == 1, congruency == "incon") %>% 
+  filter(region %in% regions) %>%
+  group_by(region, subj) %>%
+  summarize(
+    rt_target = cor(evidence_target, rt, use = "complete", method = "spearman"),
+    rt_distractor = cor(evidence_distractor, rt, use = "complete", method = "spearman"),
+    rt_congruency = cor(evidence_congruency, rt, use = "complete"),
+    rt_mu = cor(mu, rt, use = "complete"),
+    #congr_mu = cor(proj_congruency, mu, use = "complete", method = "spearman")
+  ) %>%
+  as.data.table %>%
+  melt %>%
+  ggplot(aes(value, fill = variable)) +
+  geom_vline(xintercept = 0) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(vars(region))
+
+dat_pc50_w %>%
+  filter(train_stimset == "pc50", rt > 0, !is.na(rt), acc == 1, congruency == "incon") %>%
+  filter(region %in% "17Networks_LH_SalVentAttnB_IPL_1") %>%
+  ggplot(aes(evidence_distractor, rt))
+
+
+
+fit <-
+  lmer(
+    log(rt) ~ congruency * session +
+      evidence_target + evidence_distractor + evidence_congruency + mu +
+      (1 | subj),
+    dat_pc50_w, 
+    subset = region == "L_dlpfc"
+    )
+summary(fit)
+
+
+dat_pc50_w$rt[dat_pc50_w$rt == 0] <- NA
+
+fit <- lmer(log(rt) ~ proj_target * congruency + (1 | subj), dat_pc50_w, subset = region == "L_dlpfc" & session == "proactive")
+summary(fit)
+fit <- lmer(log(rt) ~ proj_distractor * congruency + (1 | subj), dat_pc50_w, subset = region == "L_dlpfc" & session == "proactive")
+summary(fit)
+fit <- lmer(rt ~ scale(mu) + (1 | subj), dat_pc50_w, subset = region == "L_dlpfc" & session == "reactive" & congruency == "congr")
+summary(fit)
+
+dat_pc50_w %>%
+  filter(
+    session == "reactive", region == "L_dlpfc", congruency == "incon",
+    proj_target > -10, proj_target < 10
+    ) %>%
+  ggplot(aes(proj_target, log(rt))) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(vars(subj))
+
+dat_pc50_w %>%
+  filter(congruency == "incon", session == "reactive") %>%
+  group_by(region, subj) %>%
+  summarize(
+    # rt_target = cor(proj_target, rt, use = "complete", method = "spearman"),
+    # rt_distractor = cor(proj_distractor, rt, use = "complete", method = "spearman"),
+    rt_congruency = cor(proj_congruency, rt, use = "complete"),
+    rt_mu = cor(mu, rt, use = "complete"),
+    #congr_mu = cor(proj_congruency, mu, use = "complete", method = "spearman")
+  ) %>%
+  as.data.table %>%
+  melt %>%
+  ggplot(aes(value, fill = variable)) +
+  geom_vline(xintercept = 0) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(vars(region))
+
+
+
+dat_pc50_w %>% 
+  filter(session == "reactive") %>%
+  group_by(region, subj) %>%
+  summarize(
+    target_congruency = cor(proj_target, proj_congruency, use = "complete"),
+    target_distractor = cor(proj_distractor, proj_target, use = "complete"),
+    target_mu = cor(mu, proj_target, use = "complete")
+  ) %>%
+  group_by(region) %>%
+  summarize_if(is.numeric, mean) %>%
+  View
+
+
+
+
+unique(dat_pc50$region)
+
+a <- dat_pc50 %>% filter(region == "L_dlpfc", run == 2, session == "reactive")
+plot(a$proj_congruency, col = ifelse(a$congruency == "incon", "red", "black"), pch = 16)
+
+
+
+
+dat_pc50 %>%
+
+  filter(region == "L_vvis") %>%
+  group_by(subj, session, run, target) %>%
+  droplevels %>%
+  summarize(
+    proj_target = mean(proj_target),
+    mu = mean(mu)
+  ) %>%
+
+  ggplot(aes(interaction(target, run), proj_target, color = target)) +
+  stat_summary(fun.data = mean_cl_boot) +
+  facet_grid(cols = vars(session))
+
+  
+
+dat_pc50 %>%
+
+  filter(region == "L_vvis") %>%
+  group_by(subj, session, run, distractor) %>%
+  droplevels %>%
+  summarize(
+    proj_distractor = mean(proj_distractor),
+    mu = mean(mu)
+  ) %>%
+
+  ggplot(aes(interaction(distractor, run), proj_distractor, color = distractor)) +
+  stat_summary(fun.data = mean_cl_boot) +
+  facet_grid(cols = vars(session))
+
+
+dat_pc50 %>%
+  group_by(subj, session, run) %>%
+  summarize(
+    rt_t = cor(proj_target, rt, na.r)
+  )
+
+
+```

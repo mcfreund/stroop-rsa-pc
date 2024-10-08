@@ -44,9 +44,9 @@ done
 ## with centering
 atlas_names="glasser2016"
 waves="wave1"
-roi_cols="superparcel"
+roi_cols="parcel"
 glmname="lsall_1rpm"
-n_cores=20
+n_cores=16
 decoder="svm"
 
 for atlas_name in ${atlas_names[@]}

@@ -104,6 +104,14 @@ core32 <- c(
   349, 350, 351, 352, 354, 361, 365, 387
 )  ## parcel indexes in Schaefer2018
 
+md <- list(
+  core = c("p9-46v", "a9-46v", "i6-8", "AVI", "8C", "IFJp", "IP2", "IP1", "PFm", "8BM", "SCEF"),
+  extended = c(
+    "a9-46v", "p10p", "a10p", "11l", "a47r", "p47r", "FOP5", "AVI", "p9-46v", "8C", "IFJp", "6r", "s6-8", "i6-8",
+    "SCEF", "8BM", "a32pr", "d32", "TE1m", "TE1p", "AIP", "IP2", "LIPd", "MIP", "IP1", "PGs", "PFm", "POS2"
+  )
+)
+
 
 superparcels <- list(
   ## lateral posterior parietal cortex (intraparietal sulcus):

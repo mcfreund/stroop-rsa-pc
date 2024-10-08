@@ -1,9 +1,11 @@
 ## input arguments
 
-n_cores <- 4
-atlas_roi_nms <- c("glasser2016__superparcel", "glasser2016__parcel", "schaefer2018_17_200__parcel")
-suffix <- "__nresamp100__lsall_1rpm__divnormed__demeaned"
-waves <- c("wave1", "wave2")
+n_cores <- 8
+atlas_roi_nms <- c("glasser2016__parcel")
+#atlas_roi_nms <- c("glasser2016__superparcel", "glasser2016__parcel", "schaefer2018_17_200__parcel")
+suffix <- "__nresamp100__lsall_1rpm__divnormed__demeaned__centered"
+waves <- c("wave1")
+#waves <- c("wave1", "wave2")
 
 ## libraries
 
